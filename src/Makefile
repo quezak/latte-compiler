@@ -5,10 +5,8 @@ PY_LATTE = LatteLexer.py  LatteParser.py
 PY_TREE = LatteTreeBuilder.py
 PY_MAIN = LatteMain.py
 JAVA = java
-JFLAGS = -classpath ../lib/antlr3.jar:../lib/antlr.jar:../lib/stringtemplate.jar -Djava.library.path=/lib:/usr/lib:../lib
-# TODO uncomment before submitting
-#ANTLR = $(JAVA) $(JFLAGS) org.antlr.Tool
-ANTLR=antlr3
+JFLAGS = -classpath ../lib/antlr3.jar:../lib/antlr.jar:../lib/stringtemplate.jar -Djava.library.path=/lib:/usr/lib:../lib -Dfile.encoding=utf-8
+ANTLR = $(JAVA) $(JFLAGS) org.antlr.Tool
 DIR = $(shell pwd)
 
 .PHONY: all

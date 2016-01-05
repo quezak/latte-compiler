@@ -11,6 +11,7 @@ options {
     ASTLabelType = CommonTree;
 }
 
+// Virtual tokens needed to mark some AST nodes.
 tokens {
     PROG;
     FUNDEF;
@@ -23,13 +24,14 @@ tokens {
     NEG;
 }
 
+// Header pasted on the top of parser file.
 @header {
 from antlr3.dottreegen import *
 from FuturePrint import debug, message, warning, error
 from LatteLexer import LatteLexer
 from LatteErrors import Status, ParserError
 
-# nazwy funkcji predefiniowanych
+# Predefined functions names.
 class Builtins:
     PRINT_INT = 'printInt';
     PRINT_STRING = 'printString';
@@ -39,12 +41,15 @@ class Builtins:
     MAIN = 'main';
 }
 
+// Header pasted on the top of lexer file.
 @lexer::header {
 from LatteErrors import Status, ParserError
 }
 
+// Additional methods for parser's class.
 @members {
 def printDotTree(self):
+    """ Prints the AST in DOT format, which can be visualized using e.g. graphviz. """
     tree = self.prog().tree
     gen = DOTTreeGenerator()
     st = gen.toDOT(tree)
@@ -55,18 +60,25 @@ def printDotTree(self):
     print(st)
 
 def displayRecognitionError(self, tokenNames, e):
+    """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
     Status.addError(ParserError(msg, e.line, e.charPositionInLine))
 }
 
+// Additional methods for lexer's class.
 @lexer::members {
 def displayRecognitionError(self, tokenNames, e):
+    """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
     Status.addError(ParserError(msg, e.line, e.charPositionInLine))
 }
 
 @main {
 def main(argv):
+    """ Main function in case the parser is executed directly.
+    
+    Only for testing purposes. Reads code from stdin, writes diagnostic messages
+    and the tree description for graphviz. """
     lexer = LatteLexer(ANTLRInputStream(sys.stdin))
     tokens = CommonTokenStream(lexer)
     parser = LatteParser(tokens)
@@ -77,7 +89,7 @@ def main(argv):
 /*------------------------------------------------------------------
  * PARSER RULES
  *------------------------------------------------------------------*/
-
+// Latte grammar, converted to LL* format.
 
 // programs ------------------------------------------------
 prog        : (fundef)* EOF -> ^(PROG fundef*);
@@ -131,12 +143,6 @@ expr        : eOr;
 
 exprlist    : LPAREN! (expr (LISTSEP! expr)* )? RPAREN!;
 
-/*
-parse: (
-        t=. {debug("text: {0:16s} type: {1}".format($t.text, tokenNames[$t.type]))}
-            )* EOF ;
-*/
-
             
 /*------------------------------------------------------------------
  * LEXER RULES
@@ -180,7 +186,7 @@ IDENT       : IDFCHAR (IDCHAR)*;
 fragment IDFCHAR : ('a'..'z' | 'A'..'Z' | '_');
 fragment IDCHAR : (IDFCHAR | '0'..'9');
 STRINGLIT   : '"' ('\\"' | ~'"')* '"';
+
 LINECOMMENT : '//' ~('\r' | '\n')* { $channel = HIDDEN };
 COMMENT     : '/*' (options {greedy=false;} : .)* '*/' { $channel = HIDDEN };
-
 WHITESPACE  : ( '\t' | ' ' | '\r' | '\n'| '\u000C' )+ { $channel = HIDDEN };

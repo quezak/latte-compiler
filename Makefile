@@ -1,11 +1,9 @@
 LATC = latc_x86
 
 .PHONY: all
-all: $(LATC)
-
-$(LATC):
+all: 
 	$(MAKE) $(MAKEOPTS) -C src
-	mv src/$@ .
+	cp src/$(LATC) .
 
 .PHONY: clean
 clean:

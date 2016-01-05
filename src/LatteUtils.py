@@ -8,7 +8,7 @@ import LatteParser as LP
 
 
 class Symbol(object):
-
+    """ Class representing a symbol (name, type and possibly location of declaration). """
     def __init__(self, name, type, pos=None):
         super(Symbol, self).__init__()
         self.name = name
@@ -16,6 +16,7 @@ class Symbol(object):
         self.type = type
 
     def __eq__(self, other):
+        """ Type matching. """
         if isinstance(other, Symbol):
             return self.type == other.type
         return NotImplemented
@@ -32,20 +33,20 @@ class Symbol(object):
         return False
 
     def checkWith(self, other, pos):
+        """ Check if two symbols have matching type. """
         if not other:
             debug('checkWith on %s with None' % (str(self)))
-            return # zakładamy że skoro jest None to błąd już był wcześniej
+            return # Assuming that None here means an error was already reported.
         if not self == other:
             Status.addError(TypecheckError('expression has type "%s", expected "%s"' %
                 (str(other), str(self)), pos))
 
 
 class FunSymbol(Symbol):
-    """
-    args - lista typów argumentów, [Symbol]
-    """
+    """ A special kind of symbol for function declarations. """
 
     def __init__(self, name, ret_type, args, block, pos=None):
+        """ `args` is a list of Symbol instances -- function's argument types. """
         super(FunSymbol, self).__init__(name, LP.FUNDEF, pos)
         self.ret_type = ret_type
         self.args = args
@@ -53,8 +54,10 @@ class FunSymbol(Symbol):
         self.defined = False
 
     def __eq__(self, other):
+        """ If the other symbol is also a function, check type and argument types. """
         if isinstance(other, FunSymbol):
             return self.ret_type == other.ret_type and self.args == other.args
+        # Otherwise fall back to Symbol's logic -- it will return false or NotImplemented.
         return super(FunSymbol, self).__eq__(other)
 
     def __ne__(self, other):
@@ -76,25 +79,7 @@ class FunSymbol(Symbol):
         return True
     
 
-#class LatteAST(CommonTree):
-    #def __init__(self, payload):
-        #super(LatteAST, self).__init__(payload)
-        #self.first_token = self.getTokenStartIndex()
-        #self.pos = Status.getPos(self.first_token)
-        ##debug('%s: %s' % (self.pos, (LP.tokenNames[self.token.type] if self.token else '??')))
-
-    #def dupNode(self):
-        #return LatteAST(self)
-
-    #def posasdf(self):
-        #return self.pos
-
-
-#class LatteASTAdaptor(CommonTreeAdaptor):
-    #def createWithPayload(self, payload):
-        #return LatteAST(payload)
-
-# switch z http://code.activestate.com/recipes/410692
+# A switch-like construction from z http://code.activestate.com/recipes/410692
 # This class provides the functionality we want. You only need to look at
 # this if you want to know how this works. It only needs to be defined
 # once, no need to muck around with its internals.
@@ -121,6 +106,7 @@ class switch(object):
 
 ### function argument #############################################################################
 class FunArg(object):
+    """ A simple class for a funcion argument, before it gets registered as a symbol. """
     def __init__(self, type, name):
         self.type = type
         self.name = name
@@ -129,6 +115,7 @@ class FunArg(object):
 
 ### single declaration ############################################################################
 class DeclArg(object):
+    """ A simple class for a declared item, before it gets registered as a symbol. """
     def __init__(self, name, pos, expr=None):
         self.name = name
         self.expr = expr

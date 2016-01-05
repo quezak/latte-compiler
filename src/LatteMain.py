@@ -36,12 +36,10 @@ def main(argv):
     walker = LatteTreeBuilder(nodes)
     prog_tree = walker.prog()
     # [3] sprawdzenie typów
-    prog_tree.setLevel(0)
     debug("-----------------------------------------------");
     prog_tree.printTree()
     debug("-----------------------------------------------");
     prog_tree.checkTypes()
-    prog_tree.clearSymbols()
     if Status.errors() > 0:
         sys.exit(Status.errors())
     # [4] budowa drzewa kodu

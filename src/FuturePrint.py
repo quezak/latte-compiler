@@ -1,4 +1,5 @@
 #!/usr/bin/python2
+""" Message printing functions using print() from python3. """
 from __future__ import print_function
 import sys
 

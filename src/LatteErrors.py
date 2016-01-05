@@ -4,6 +4,7 @@
 from FuturePrint import debug, message, warning, error, note
 
 class Status(object):
+    """ A class for collecting status messages (errors, warnings and notes). """
     _errors = 0
     _warnings = 0
     _tokens = None
@@ -17,6 +18,7 @@ class Status(object):
     def addError(cls, exc, fatal=False):
         error(str(exc))
         cls._errors += 1
+        # TODO maybe print "FATAL ERROR" and exit(N), users don't like stack traces
         if fatal:
             raise exc
 
@@ -43,6 +45,7 @@ class Status(object):
 
     @classmethod
     def getCurPos(cls, offset=-1):
+        """ Try to get the current token's position in source code. """
         if not cls._nodes.LT(offset): return None
         token = cls._nodes.LT(offset).token
         if not token: return None
@@ -50,6 +53,7 @@ class Status(object):
 
     @classmethod
     def getPos(cls, pos):
+        """ Get the source code position of a given token. """
         token = cls._tokens.get(pos)
         return '%d:%d' % (token.line, token.charPositionInLine+1)
 
@@ -59,6 +63,7 @@ class Status(object):
 
 
 class LatteError(Exception):
+    """ Main class for all compiler's errors. """
     def __init__(self, msg, pos=None):
         self.msg = msg
         self.pos = ('at ' + pos + ': ') if pos else ''
