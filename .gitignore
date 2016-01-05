@@ -8,6 +8,13 @@ __pycache__/
 # Distribution / packaging
 build/
 lib/
+test/
 
 # vim temps
 .*.sw[po]
+
+# Files generated from grammars by ANTLR
+LatteLexer.py
+LatteParser.py
+LatteTreeBuilder.py
+*.tokens
