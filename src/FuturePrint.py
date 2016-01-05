@@ -4,6 +4,7 @@ from __future__ import print_function
 import sys
 
 def debug(*objs):
+    # TODO print only if some global flag is set
     print('[dbg]', *objs, file=sys.stderr)
 
 def message(*objs):

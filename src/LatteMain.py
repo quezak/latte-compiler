@@ -45,14 +45,13 @@ def main(argv):
     # [4] budowa drzewa kodu
     debug("-----------------------------------------------");
     prog_code = ProgCode(prog_tree)
-    prog_code.mkAllCode()
+    prog_code.genCode()
     debug("-----------------------------------------------");
-    # [5] wygenerowanie instrukcji
-    instructions = []
-    prog_code.appendCode(instructions)
+    instructions = [i for i in prog_code.instructions()]
     if Status.errors() > 0:
         sys.exit(Status.errors())
     # [6] wypisanie kodu wynikowego
+    debug("-----------------------------------------------");
     for instr in instructions:
         print instr
     sys.exit(Status.errors())
