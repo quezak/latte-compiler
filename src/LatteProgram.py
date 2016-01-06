@@ -21,14 +21,12 @@ class Codes(object):
     popA = ['popl', '%eax']
     popD = ['popl', '%edx']
     popC = ['popl', '%ecx']
+    pushA = ['pushl', '%eax']
+    pushD = ['pushl', '%edx']
+    pushC = ['pushl', '%ecx']
     top = '%esp'
     ebp = '%ebp'
     regcmp = '%al'
-
-    @classmethod
-    def passArg(cls, n):
-        if n == 0: return '(' + cls.top + ')'
-        return str(4 * n) + '(' + cls.top + ')'
 
     @classmethod
     def getArg(cls, n):
@@ -161,6 +159,7 @@ class FunCode(LatteCode):
         self.addInstr(['.type', self.name, '@function'])
         self.addInstr(['LABEL', self.name])
         # prologue
+        # TODO space for local vars
         self.addInstr(['pushl', Codes.ebp])
         self.addInstr(['movl', Codes.top, Codes.ebp])
         self.addInstr(['andl', '$-16', Codes.top])
@@ -199,7 +198,8 @@ class StmtCode(LatteCode):
                 # children: cond, if-block, (else-block?)
                 # TODO rewrite lazy condition evaluation
                 self.addInstr(Codes.child(0))
-                self.addInstr(['cmpl', '$0', Codes.addr(Codes.top)])
+                self.addInstr(Codes.popA)
+                self.addInstr(['cmpl', '$0', Codes.regA])
                 self.addInstr(['jne', self.label_true]) # true -- skok do bloku true
                 if len(self.children) >= 3: # false -- ew. blok false, potem skok za if
                     self.addInstr(Codes.child(2))
@@ -275,8 +275,7 @@ class ExprCode(StmtCode):
     def checkUnusedResult(self):
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
-            # TODO just change esp
-            self.addInstr(['popl', Codes.regA + ' ; unused'])
+            self.addInstr(['addl', '$4', Codes.regA, ' ; unused result'])
 
 
 ### literal #######################################################################################
@@ -288,18 +287,19 @@ class LiteralCode(ExprCode):
             if case(LP.BOOLEAN):
                 # We already checked that a boolean is a boolean, now we use numbers.
                 if self.value == 'true':
-                    self.value = '1'
+                    self.value = 1
                 else:
-                    self.value = '0'
+                    self.value = 0
                 break
 
     def _genCode(self):
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
-                self.addInstr(['pushl', '$' + self.value])
+                self.addInstr(['pushl', '$' + str(self.value)])
                 break
             if case(LP.IDENT):
-                self.addInstr(['pushl', self.tree.symbol(self.value).pos])
+                self.addInstr(['movl', self.tree.symbol(self.value).pos, Codes.regA])
+                self.addInstr(Codes.pushA)
                 break
             if case(LP.STRING):
                 raise NotImplementedError('string literal') # TODO
@@ -318,13 +318,17 @@ class UnopCode(ExprCode):
     def _genCode(self):
         self.addInstr(Codes.child(0))
         for case in switch(self.type.type):
-            if case(LP.NEG):
-                self.addInstr(['negl', Codes.addr(Codes.top)])
+            if case(LP.NEG): # binary negation
+                self.addInstr(Codes.popA)
+                self.addInstr(['negl', Codes.regA])
+                self.addInstr(Codes.pushA)
                 break
-            if case(LP.NOT):
-                self.addInstr(['cmpl', '$0', Codes.addr(Codes.top)])
+            if case(LP.NOT): # logical not
+                self.addInstr([Codes.popA])
+                self.addInstr(['cmpl', '$0', Codes.regA])
                 self.addInstr(['sete', Codes.regcmp])
-                self.addInstr(['movzbl', Codes.regcmp, Codes.addr(Codes.top)])
+                self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
+                self.addInstr([Codes.pushA])
                 break
             if case():
                 raise InternalError('wrong unop value type')
@@ -362,36 +366,30 @@ class BinopCode(ExprCode):
 
     def _genCodeBinop(self):
         for case in switch(self.type.type):
-            if case(LP.PLUS, LP.MINUS):
-                opcode = { LP.PLUS: 'addl', LP.MINUS: 'subl' }[self.type.type]
+            if case(LP.PLUS, LP.MINUS, LP.MULT):
+                opcode = { LP.PLUS: 'addl', LP.MINUS: 'subl', LP.MULT: 'imull' }[self.type.type]
                 self.addInstr(Codes.popA)
-                # TODO is the order good?
-                self.addInstr([opcode, Codes.regA, Codes.addr(Codes.top)])
-                # TODO where do we push the result?
-                break
-            if case(LP.MULT):
-                # TODO join with plus/minus
                 self.addInstr(Codes.popD)
-                self.addInstr(Codes.popA)
-                self.addInstr(['imull', Codes.regD, Codes.regA])
-                self.addInstr(['pushl', Codes.regA])
+                self.addInstr([opcode, Codes.regD, Codes.regA])
+                self.addInstr(Codes.pushA)
                 break
             if case(LP.DIV, LP.MOD):
-                self.addInstr(Codes.popC) # dzielnik
-                self.addInstr(Codes.popA) # dzielna
+                self.addInstr(Codes.popA)
+                self.addInstr(Codes.popC)
                 self.addInstr(['cdq'])
-                self.addInstr(['idivl', Codes.regC]) # wynik w eax, reszta w edx
-                res_reg = (Codes.regA if self.type.type == LP.DIV else Codes.regD)
-                self.addInstr(['pushl', res_reg])
+                self.addInstr(['idivl', Codes.regC]) # quotient in eax, remainder in edx
+                self.addInstr(Codes.pushA if self.type.type == LP.DIV else Codes.pushD)
                 break
 
     def _genCodeRelop(self):
         opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge', LP.LT: 'setl',
                 LP.LEQ: 'setle' }[self.type.type]
         self.addInstr(Codes.popA)
-        self.addInstr(['cmpl', Codes.addr(Codes.top), Codes.regA])
+        self.addInstr(Codes.popD)
+        self.addInstr(['cmpl', Codes.regD, Codes.regA])
         self.addInstr([opcode, Codes.regcmp])
-        self.addInstr(['movzbl', Codes.regcmp, Codes.addr(Codes.top)])
+        self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
+        self.addInstr([Codes.pushA])
 
     def _genCodeBoolop(self):
         if self.type.type == LP.AND:
@@ -403,14 +401,15 @@ class BinopCode(ExprCode):
         else:
             raise InternalError('wrong boolop type')
         self.addInstr(Codes.popA)
-        self.addInstr(['cmpl', jval, Codes.addr(Codes.top)])
+        self.addInstr(Codes.popD)
+        self.addInstr(['cmpl', jval, Codes.regD])
         self.addInstr(['je', self.label_jump])
         self.addInstr(['cmpl', jval, Codes.regA])
         self.addInstr(['je', self.label_jump])
-        self.addInstr(['movl', nval, Codes.addr(Codes.top)])
+        self.addInstr(['pushl', nval])
         self.addInstr(['jmp', self.label_nojump])
         self.addInstr(['LABEL', self.label_jump])
-        self.addInstr(['movl', jval, Codes.addr(Codes.top)])
+        self.addInstr(['pushl', jval])
         self.addInstr(['LABEL', self.label_nojump])
 
 
@@ -426,15 +425,11 @@ class FuncallCode(ExprCode):
     def _genCode(self):
         fun = self.getCurFun()
         # [1] Compute memory usage for arguments.
+        # TODO do we need to 16-align the stack?
         argmem = 4 * len(self.children)
-        # TODO split this to subl and pushes
-        self.addInstr(['subl', '$%d' % argmem, Codes.top])
         # [2] Push arguments.
         for i in xrange(0, len(self.children)):
-            self.addInstr(Codes.child(i))
-            # TODO lol fix these redundant moves
-            self.addInstr(Codes.popA)
-            self.addInstr(['movl', Codes.regA, Codes.passArg(i)])
+            self.addInstr(Codes.child(i)) # Leaves the value on stack.
         # [3] Call and pop arguments.
         self.addInstr(['call', self.fname])
         self.addInstr(['addl', '$%d' % argmem, Codes.top])
