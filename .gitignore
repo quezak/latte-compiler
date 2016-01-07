@@ -21,3 +21,4 @@ LatteTreeBuilder.py
 
 latc_x86
 src/latc_x86
+src/runtime.o

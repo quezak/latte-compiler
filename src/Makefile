@@ -8,12 +8,17 @@ JAVA = java
 JFLAGS = -classpath ../lib/antlr3.jar:../lib/antlr.jar:../lib/stringtemplate.jar -Djava.library.path=/lib:/usr/lib:../lib -Dfile.encoding=utf-8
 ANTLR = $(JAVA) $(JFLAGS) org.antlr.Tool
 DIR = $(shell pwd)
+LIBDIR = $(realpath $(DIR)/../lib)
+CC = gcc
+CFLAGS = -m32 -Wall
+RUNTIME = runtime.o
+RUNTIME_C = latte-runtime.c
 
 .PHONY: all
-all: $(LATC) $(PY_TREE) $(PY_LATTE)
+all: $(LATC) $(PY_TREE) $(PY_LATTE) $(RUNTIME)
 
 $(LATC):
-	@echo -e "#!/bin/sh\nPYTHONPATH=$(DIR)/../lib python2 $(DIR)/$(PY_MAIN) "'"$$@"' > $@
+	@echo -e "#!/bin/sh\nPYTHONPATH=$(LIBDIR) python2 $(DIR)/$(PY_MAIN) "'"$$@"' > $@
 	@chmod +x $@
 
 $(PY_LATTE): $(G_LATTE)
@@ -22,8 +27,11 @@ $(PY_LATTE): $(G_LATTE)
 $(PY_TREE): $(G_TREE) $(PY_LATTE)
 	$(ANTLR) $<
 
+$(RUNTIME): $(RUNTIME_C)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # TODO compile all .pys manually?
 
 .PHONY: clean
 clean:
-	rm -f $(PY_LATTE) $(PY_TREE) *.{pyc,pyo,tokens} $(LATC) ../lib/antlr3/*.py{c,o}
+	rm -f $(PY_LATTE) $(PY_TREE) *.{pyc,pyo,tokens} $(LATC) $(RUNTIME)
