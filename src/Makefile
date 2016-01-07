@@ -18,7 +18,8 @@ RUNTIME_C = latte-runtime.c
 all: $(LATC) $(PY_TREE) $(PY_LATTE) $(RUNTIME)
 
 $(LATC):
-	@echo -e "#!/bin/sh\nPYTHONPATH=$(LIBDIR) python2 $(DIR)/$(PY_MAIN) "'"$$@"' > $@
+	@echo -e "#!/bin/sh\nPYTHONPATH=\"$(LIBDIR)\" python2 \"$(DIR)/$(PY_MAIN)\" " \
+		"-r \"$(LIBDIR)/runtime.o\" "'"$$@"' > $@
 	@chmod +x $@
 
 $(PY_LATTE): $(G_LATTE)

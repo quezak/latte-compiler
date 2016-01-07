@@ -37,6 +37,7 @@ class Flags(object):
     input_file = None
     bin_file = None
     asm_file = None
+    runtime_file = "runtime.o"
 
     @classmethod
     def parse_args(cls, argv):
@@ -47,6 +48,8 @@ class Flags(object):
         parser.add_argument("-s", "--asm_output", dest="asm_file",
                 help="custom output assembly file ('-' for stdout, does not create executable)")
         parser.add_argument("-d", "--debug", action="store_true", help="print debug messags")
+        parser.add_argument("-r", "--runtime", dest="runtime_file", default="runtime.o",
+                help="path to latte runtime library (default runtime.o)")
         parser.parse_args(namespace=cls) # Saves values in this class, exits on error.
         # Set output file names, if not provided.
         if not cls.asm_file:

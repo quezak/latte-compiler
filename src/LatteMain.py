@@ -2,16 +2,17 @@
 # -*- coding: utf8 -*-
 
 from __future__ import print_function
+from subprocess import call
 import sys
 
 import LatteParser as LP
 from antlr3 import ANTLRInputStream, ANTLRFileStream, CommonTokenStream
 from antlr3.tree import CommonTreeNodeStream
-from FuturePrint import debug
+from FuturePrint import debug, message
 from LatteLexer import LatteLexer
 from LatteParser import LatteParser
 from LatteTreeBuilder import LatteTreeBuilder
-from LatteErrors import Status
+from LatteErrors import Status, LatteError
 from LatteNodes import *
 from LatteProgram import *
 from Utils import Flags
@@ -74,6 +75,13 @@ def main(argv):
             asm_file.close()
     except IOError, err:
         Status.addError(err, fatal=True)
+    # [7] link runtime library
+    if not Flags.output_to_stdout():
+        rc = call(["gcc", "-m32", Flags.runtime_file, Flags.asm_file, "-o", Flags.bin_file])
+        if rc != 0:
+            Status.addError(LatteError("linking failed"), fatal=True)
+    if Status.errors() == 0:
+        message("OK") # task requirements
     sys.exit(Status.errors())
 
 
