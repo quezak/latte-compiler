@@ -5,8 +5,9 @@ import abc
 import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
-from LatteUtils import Symbol, FunSymbol, switch
+from LatteUtils import Symbol, FunSymbol
 from LatteErrors import Status, TypecheckError
+from Utils import switch
 
 
 ### node ABC ######################################################################################

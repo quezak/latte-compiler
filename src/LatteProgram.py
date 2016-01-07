@@ -6,9 +6,10 @@ import LatteParser as LP
 import LatteCode as CC
 from FuturePrint import debug
 from LatteParser import Builtins
-from LatteUtils import Symbol, FunSymbol, switch
+from LatteUtils import Symbol, FunSymbol
 from LatteErrors import InternalError
 from LatteNodes import ExprTree
+from Utils import switch
 
 
 ### code tokens ###################################################################################

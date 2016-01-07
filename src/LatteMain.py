@@ -20,9 +20,6 @@ def main(argv):
     tokens = CommonTokenStream(lexer)
     Status.setTokenStream(tokens)
     parser = LatteParser(tokens)
-    #tree_adaptor = LatteASTAdaptor()
-    #parser.setTreeAdaptor(tree_adaptor)
-    #parser.printDotTree()
     parsed_prog = parser.prog()
     if Status.errors() > 0:
         sys.exit(Status.errors())
