@@ -407,7 +407,7 @@ class BinopCode(ExprCode):
                 if self.type.type in BinopTree._rel_ops:
                     self._genCodeRelop() # comparision
                 else:
-                    self._genCodeBitop() # bitwise operation
+                    self._genCodeBoolop() # logical operation
                 break
             if case(LP.STRING):
                 raise NotImplementedError('string binop')
@@ -419,14 +419,14 @@ class BinopCode(ExprCode):
         for case in switch(self.type.type):
             if case(LP.PLUS, LP.MINUS, LP.MULT):
                 opcode = { LP.PLUS: 'addl', LP.MINUS: 'subl', LP.MULT: 'imull' }[self.type.type]
-                self.addInstr(Codes.popA)
                 self.addInstr(Codes.popD)
+                self.addInstr(Codes.popA)
                 self.addInstr([opcode, Codes.regD, Codes.regA])
                 self.addInstr(Codes.pushA)
                 break
             if case(LP.DIV, LP.MOD):
-                self.addInstr(Codes.popA)
                 self.addInstr(Codes.popC)
+                self.addInstr(Codes.popA)
                 self.addInstr(['cdq'])
                 self.addInstr(['idivl', Codes.regC]) # quotient in eax, remainder in edx
                 self.addInstr(Codes.pushA if self.type.type == LP.DIV else Codes.pushD)
@@ -440,14 +440,14 @@ class BinopCode(ExprCode):
                     LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
         except KeyError:
             raise InternalError('wrong rel op type %s' % str(self.type))
-        self.addInstr(Codes.popA)
         self.addInstr(Codes.popD)
+        self.addInstr(Codes.popA)
         self.addInstr(['cmpl', Codes.regD, Codes.regA])
         self.addInstr([opcode, Codes.regcmp])
         self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
         self.addInstr(Codes.pushA)
 
-    def _genCodeBitop(self):
+    def _genCodeBoolop(self):
         if self.type.type == LP.AND:
             jval = Codes.const(0)
             nval = Codes.const(1)
