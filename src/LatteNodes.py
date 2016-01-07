@@ -360,8 +360,17 @@ class DeclTree(StmtTree):
 
     def addItem(self, item):
         self.items.append(item)
-        if item.expr:
-            self.addChild(item.expr)
+        if not item.expr:
+            for case in switch(self.decl_type.type):
+                if case(LP.INT):
+                    item.expr = LiteralTree(LP.INT, 0)
+                    break
+                if case(LP.BOOLEAN):
+                    item.expr = LiteralTree(LP.BOOLEAN, "false")
+                    break
+                if case():
+                    raise InternalError("no default value for type %s" % str(self.decl_type))
+        self.addChild(item.expr)
 
     def printTree(self):
         self._printIndented('>DECL %s' % str(self.decl_type))
