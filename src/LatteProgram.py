@@ -398,15 +398,16 @@ class BinopCode(ExprCode):
     def _genCode(self):
         self.addInstr(Codes.child(0))
         self.addInstr(Codes.child(1))
-        for case in switch(self.children[0].value_type.type):
-            if case(LP.INT, LP.BOOLEAN):
+        # detect operator type by result and argument types
+        for case in switch(self.value_type.type):
+            if case(LP.INT):
+                self._genCodeIntop()
+                break
+            if case(LP.BOOLEAN):
                 if self.children[0].value_type.type == LP.BOOLEAN:
-                    if self.type.type in [LP.AND, LP.OR]:
-                        self._genCodeBoolop()
-                    else:
-                        self._genCodeRelop()
+                    self._genCodeBoolop()
                 else:
-                    self._genCodeBinop()
+                    self._genCodeRelop()
                 break
             if case(LP.STRING):
                 raise NotImplementedError('string binop')
@@ -414,7 +415,7 @@ class BinopCode(ExprCode):
                 raise InternalError('wrong binop value type %s')
         self.checkUnusedResult()
 
-    def _genCodeBinop(self):
+    def _genCodeIntop(self):
         for case in switch(self.type.type):
             if case(LP.PLUS, LP.MINUS, LP.MULT):
                 opcode = { LP.PLUS: 'addl', LP.MINUS: 'subl', LP.MULT: 'imull' }[self.type.type]
@@ -430,16 +431,21 @@ class BinopCode(ExprCode):
                 self.addInstr(['idivl', Codes.regC]) # quotient in eax, remainder in edx
                 self.addInstr(Codes.pushA if self.type.type == LP.DIV else Codes.pushD)
                 break
+            if case():
+                raise InternalError('wrong int op type %d' % self.type.type)
 
     def _genCodeRelop(self):
-        opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge', LP.LT: 'setl',
-                LP.LEQ: 'setle' }[self.type.type]
+        try:
+            opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
+                    LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
+        except KeyError:
+            raise InternalError('wrong rel op type %d' % self.type.type)
         self.addInstr(Codes.popA)
         self.addInstr(Codes.popD)
         self.addInstr(['cmpl', Codes.regD, Codes.regA])
         self.addInstr([opcode, Codes.regcmp])
         self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
-        self.addInstr([Codes.pushA])
+        self.addInstr(Codes.pushA)
 
     def _genCodeBoolop(self):
         if self.type.type == LP.AND:
@@ -449,7 +455,7 @@ class BinopCode(ExprCode):
             jval = Codes.const(1)
             nval = Codes.const(0)
         else:
-            raise InternalError('wrong boolop type')
+            raise InternalError('wrong bool op type %d' % self.type.type)
         self.addInstr(Codes.popA)
         self.addInstr(Codes.popD)
         self.addInstr(['cmpl', jval, Codes.regD])

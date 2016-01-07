@@ -498,7 +498,7 @@ class BinopTree(ExprTree):
         # children: expa, expb
         # [1] Compute the type of first subexpression.
         self.children[0].checkTypes()
-        # [1] Set the type: boolean for logical operators, otherwise the first expr's type.
+        # [1] Set the type: boolean for comparision operators, otherwise the first expr's type.
         if self.isRelOp():
             self.setValueType(Symbol('', LP.BOOLEAN, self.pos))
         else:
