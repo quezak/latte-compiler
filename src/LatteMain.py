@@ -2,8 +2,9 @@
 # -*- coding: utf8 -*-
 
 import sys
+
 import LatteParser as LP
-from antlr3 import ANTLRInputStream, CommonTokenStream
+from antlr3 import ANTLRInputStream, ANTLRFileStream, CommonTokenStream
 from antlr3.tree import CommonTreeNodeStream
 from FuturePrint import debug
 from LatteLexer import LatteLexer
@@ -12,11 +13,20 @@ from LatteTreeBuilder import LatteTreeBuilder
 from LatteErrors import Status
 from LatteNodes import *
 from LatteProgram import *
+from Utils import Flags
 
 
 def main(argv):
-    # [1] parsowanie
-    lexer = LatteLexer(ANTLRInputStream(sys.stdin))
+    # [1] read arguments
+    Flags.parse_args(argv) # Exits on error.
+    if Flags.input_from_stdin():
+        filestream = ANTLRInputStream(sys.stdin)
+        debug("INPUT: stdin")
+    else:
+        filestream = ANTLRFileStream(Flags.input_file)
+        debug("INPUT: ", Flags.input_file)
+    # [2] parse the code
+    lexer = LatteLexer(filestream)
     tokens = CommonTokenStream(lexer)
     Status.setTokenStream(tokens)
     parser = LatteParser(tokens)

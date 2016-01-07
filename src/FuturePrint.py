@@ -3,9 +3,11 @@
 from __future__ import print_function
 import sys
 
+from Utils import Flags
+
 def debug(*objs):
-    # TODO print only if some global flag is set
-    print('[dbg]', *objs, file=sys.stderr)
+    if Flags.debug:
+        print('[dbg]', *objs, file=sys.stderr)
 
 def message(*objs):
     print(*objs, file=sys.stderr)

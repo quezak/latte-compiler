@@ -16,6 +16,7 @@ class Status(object):
 
     @classmethod
     def addError(cls, exc, fatal=False):
+        if cls._errors  == 0: error("ERROR") # task requirements
         error(str(exc))
         cls._errors += 1
         # TODO maybe print "FATAL ERROR" and exit(N), users don't like stack traces
