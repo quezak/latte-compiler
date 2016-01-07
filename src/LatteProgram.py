@@ -8,7 +8,7 @@ from FuturePrint import debug
 from LatteParser import Builtins
 from LatteUtils import Symbol, FunSymbol
 from LatteErrors import InternalError
-from LatteNodes import ExprTree
+from LatteNodes import ExprTree, BinopTree
 from Utils import switch
 
 
@@ -242,7 +242,7 @@ class StmtCode(LatteCode):
                 self.addInstr(['movl', Codes.regA, dest_addr])
                 break
             if case():
-                raise NotImplementedError('unknown statement type: ' + str(self.type.type)) # TODO
+                raise NotImplementedError('unknown statement type: %s' % str(self.type))
 
     def countLocalVars(self):
         # TODO wrap one-instruction then-blocks in a block node
@@ -398,16 +398,16 @@ class BinopCode(ExprCode):
     def _genCode(self):
         self.addInstr(Codes.child(0))
         self.addInstr(Codes.child(1))
-        # detect operator type by result and argument types
+        # detect operator type
         for case in switch(self.value_type.type):
             if case(LP.INT):
                 self._genCodeIntop()
                 break
             if case(LP.BOOLEAN):
-                if self.children[0].value_type.type == LP.BOOLEAN:
-                    self._genCodeBoolop()
+                if self.type.type in BinopTree._rel_ops:
+                    self._genCodeRelop() # comparision
                 else:
-                    self._genCodeRelop()
+                    self._genCodeBitop() # bitwise operation
                 break
             if case(LP.STRING):
                 raise NotImplementedError('string binop')
@@ -432,14 +432,14 @@ class BinopCode(ExprCode):
                 self.addInstr(Codes.pushA if self.type.type == LP.DIV else Codes.pushD)
                 break
             if case():
-                raise InternalError('wrong int op type %d' % self.type.type)
+                raise InternalError('wrong int op type %s' % str(self.type))
 
     def _genCodeRelop(self):
         try:
             opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
                     LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
         except KeyError:
-            raise InternalError('wrong rel op type %d' % self.type.type)
+            raise InternalError('wrong rel op type %s' % str(self.type))
         self.addInstr(Codes.popA)
         self.addInstr(Codes.popD)
         self.addInstr(['cmpl', Codes.regD, Codes.regA])
@@ -447,7 +447,7 @@ class BinopCode(ExprCode):
         self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
         self.addInstr(Codes.pushA)
 
-    def _genCodeBoolop(self):
+    def _genCodeBitop(self):
         if self.type.type == LP.AND:
             jval = Codes.const(0)
             nval = Codes.const(1)
@@ -455,7 +455,7 @@ class BinopCode(ExprCode):
             jval = Codes.const(1)
             nval = Codes.const(0)
         else:
-            raise InternalError('wrong bool op type %d' % self.type.type)
+            raise InternalError('wrong bool op type %s' % str(self.type))
         self.addInstr(Codes.popA)
         self.addInstr(Codes.popD)
         self.addInstr(['cmpl', jval, Codes.regD])
