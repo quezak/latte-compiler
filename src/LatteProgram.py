@@ -28,10 +28,17 @@ class Codes(object):
     top = '%esp'
     ebp = '%ebp'
     regcmp = '%al'
+    var_size = 4 # every type uses 4 bytes for now
 
     @classmethod
-    def getArg(cls, n):
-        return str(4 * (n+2)) + '(' + cls.ebp + ')'
+    def argAddr(cls, n):
+        """ Address of n-th function argument. """
+        return cls.addr(cls.ebp, cls.var_size * (n+2))
+
+    @classmethod
+    def varAddr(cls, n):
+        """ Address of n-th local variable on stack. """
+        return cls.addr(cls.ebp, cls.var_size * (-1-n))
 
     @staticmethod
     def child(n): 
@@ -44,8 +51,12 @@ class Codes(object):
         return '.L%d' % cls._labels
 
     @staticmethod
-    def addr(pos, off=None):
-        return '%s(%s)' % ((off or ''), pos)
+    def addr(pos, offset=None):
+        return '%s(%s)' % (str(offset or ''), pos)
+
+    @staticmethod
+    def const(n):
+        return '$' + str(n)
 
 
 ### code ABC ######################################################################################
@@ -134,7 +145,7 @@ class ProgCode(LatteCode):
         # TODO .file
         # TODO string constants
         self.addInstr(['.text'])
-        for i in xrange(0, len(self.children)):
+        for i in xrange(len(self.children)):
             self.addInstr([])
             self.addInstr(Codes.child(i))
 
@@ -148,22 +159,31 @@ class FunCode(LatteCode):
         self.args = tree.args
         self.addChild(BlockCode(tree.children[0]))
         self.ret_label = Codes.label()
-        for i in xrange(0, len(self.args)):
+        for i in xrange(len(self.args)):
             arg = self.args[i]
-            self.tree.addSymbol(Symbol(arg.name, arg.type, Codes.getArg(i)))
+            self.tree.addSymbol(Symbol(arg.name, arg.type, Codes.argAddr(i)))
+        self.var_count = self.children[0].countLocalVars()
+        debug("fun ", self.name, "VAR COUNT: ", self.var_count)
+        self.used_vars = 0 # how many local variables are currently allocated
 
     def getCurFun(self):
         return self
+
+    def nextVarNum(self):
+        """ Returns the index of next free local variable on stack. """
+        self.used_vars += 1
+        return self.used_vars - 1
 
     def _genCode(self):
         self.addInstr(['.globl', self.name])
         self.addInstr(['.type', self.name, '@function'])
         self.addInstr(['LABEL', self.name])
         # prologue
-        # TODO space for local vars
         self.addInstr(['pushl', Codes.ebp])
         self.addInstr(['movl', Codes.top, Codes.ebp])
-        self.addInstr(['andl', '$-16', Codes.top])
+        # first local variable is at -4(%ebp), hence var_count+1
+        self.addInstr(['subl', Codes.const((self.var_count+1) * Codes.var_size), Codes.top])
+        #self.addInstr(['andl', '$-16', Codes.top]) TODO do we need this?
         # insert block
         self.addInstr(Codes.child(0))
         # epilogue
@@ -174,6 +194,9 @@ class FunCode(LatteCode):
 
 ### statement #####################################################################################
 class StmtCode(LatteCode):
+    # List of statement types that introduce a new context
+    context_stmts = [LP.BLOCK, LP.IF, LP.WHILE]
+
     def __init__(self, tree, **kwargs):
         super(StmtCode, self).__init__(tree, **kwargs)
         self.type = tree.type
@@ -200,7 +223,7 @@ class StmtCode(LatteCode):
                 # TODO rewrite lazy condition evaluation
                 self.addInstr(Codes.child(0))
                 self.addInstr(Codes.popA)
-                self.addInstr(['cmpl', '$0', Codes.regA])
+                self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['jne', self.label_true]) # true -- skok do bloku true
                 if len(self.children) >= 3: # false -- ew. blok false, potem skok za if
                     self.addInstr(Codes.child(2))
@@ -210,8 +233,36 @@ class StmtCode(LatteCode):
                 self.addInstr(['LABEL', self.label_after])
                 break
             # TODO while
+            if case(LP.ASSIGN):
+                # compute assigned value on stack
+                self.addInstr(Codes.child(1))
+                self.addInstr(Codes.popA)
+                # put the value into destination address
+                dest_addr = self.tree.symbol(self.children[0].value).pos
+                self.addInstr(['movl', Codes.regA, dest_addr])
+                break
             if case():
-                raise NotImplementedError('stmt') # TODO
+                raise NotImplementedError('unknown statement type: ' + str(self.type.type)) # TODO
+
+    def countLocalVars(self):
+        # TODO wrap one-instruction then-blocks in a block node
+        """ Calculate stack space needed to allocate all local variables in subtree.
+        
+        This is the total size of declarations directly in a block plus maximum size needed by any
+        sub-block (because local variables from different sub-block can occupy the same addresses).
+        Obviously not thread-safe, but we don't have threading so we can save stack space here.
+        """
+        max_subblock = 0
+        sum_decls = 0
+        for i in xrange(len(self.children)):
+            if self.children[i].tree.type.type in self.context_stmts:
+                max_subblock = max(max_subblock, self.children[i].countLocalVars())
+            elif self.children[i].tree.type.type == LP.DECL:
+                sum_decls += self.children[i].countLocalVars()
+        debug('in block max_subblock: ', max_subblock, ' sum_decls: ', sum_decls)
+        self.var_count = sum_decls + max_subblock
+        return self.var_count
+
 
 
 ### code block ####################################################################################
@@ -225,42 +276,40 @@ class BlockCode(StmtCode):
         return self
 
     def _genCode(self):
-        for i in xrange(0, len(self.children)):
+        for i in xrange(len(self.children)):
             self.addInstr(Codes.child(i))
-
+        fun = self.getCurFun()
+        fun.used_vars -= self.var_count # free local variables as the context is closed
 
 ### declaration ###################################################################################
-#class DeclCode(StmtCode):
-    #def __init__(self, tree, **kwargs):
-        #super(DeclCode, self).__init__(tree, no_children=True, **kwargs)
-        #self.decl_type = tree.decl_type
-        #self.items = []
-        #for item in tree.items:
-            #self.addItem(item)
-        #cpos = 0
-        #for item in self.items:
-            #if item.expr:
-                #expr = self.children[cpos]
-                #cpos += 1
-            #else:
-                #expr = None
-            #self.addInstr((CC.decl,
-                #{ 'type': self.decl_type, 'name': item.name, 'tree': self.tree, 'expr': expr }
-            #))
+class DeclCode(StmtCode):
+    def __init__(self, tree, **kwargs):
+        super(DeclCode, self).__init__(tree, no_children=True, **kwargs)
+        self.decl_type = tree.decl_type
+        self.items = []
+        for item in tree.items:
+            self.addItem(item)
 
-    #def addItem(self, item):
-        #self.items.append(item)
-        #if item.expr:
-            #self.addChild(ExprFactory(item.expr))
+    def addItem(self, item):
+        self.items.append(item)
+        self.items[-1].expr_child = len(self.children)
+        if item.expr:
+            self.addChild(ExprFactory(item.expr))
 
-    #def _genCode(self):
-        #cpos = 0
-        #for item in self.items:
-            #if item.expr:
-                #self.addInstr(Codes.child(i))
-            #else:
-                #if self.decl_type.type in [LP.BOOLEAN, LP.INT]:
-#TODO                    self.addInstr('
+    def countLocalVars(self):
+        return len(self.items)
+
+    def _genCode(self):
+        fun = self.getCurFun()
+        block = self.getCurBlock()
+        # For each declared item, compute its address on stack (and assign the value if needed).
+        for item in self.items:
+            addr = Codes.varAddr(fun.nextVarNum())
+            block.tree.addSymbol(Symbol(item.name, self.decl_type, addr))
+            if item.expr:
+                self.addInstr(Codes.child(item.expr_child))
+                self.addInstr(Codes.popA)
+                self.addInstr(['movl', Codes.regA, addr])
 
 
 ### expression ####################################################################################
@@ -276,7 +325,7 @@ class ExprCode(StmtCode):
     def checkUnusedResult(self):
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
-            self.addInstr(['addl', '$4', Codes.regA, ' ; unused result'])
+            self.addInstr(['addl', Codes.const(Codes.var_size), Codes.regA, ' ; unused result'])
 
 
 ### literal #######################################################################################
@@ -296,7 +345,7 @@ class LiteralCode(ExprCode):
     def _genCode(self):
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
-                self.addInstr(['pushl', '$' + str(self.value)])
+                self.addInstr(['pushl', Codes.const(self.value)])
                 break
             if case(LP.IDENT):
                 self.addInstr(['movl', self.tree.symbol(self.value).pos, Codes.regA])
@@ -326,7 +375,7 @@ class UnopCode(ExprCode):
                 break
             if case(LP.NOT): # logical not
                 self.addInstr([Codes.popA])
-                self.addInstr(['cmpl', '$0', Codes.regA])
+                self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['sete', Codes.regcmp])
                 self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
                 self.addInstr([Codes.pushA])
@@ -394,11 +443,11 @@ class BinopCode(ExprCode):
 
     def _genCodeBoolop(self):
         if self.type.type == LP.AND:
-            jval = '$0'
-            nval = '$1'
+            jval = Codes.const(0)
+            nval = Codes.const(1)
         elif self.type.type == LP.OR:
-            jval = '$1'
-            nval = '$0'
+            jval = Codes.const(1)
+            nval = Codes.const(0)
         else:
             raise InternalError('wrong boolop type')
         self.addInstr(Codes.popA)
@@ -426,14 +475,14 @@ class FuncallCode(ExprCode):
     def _genCode(self):
         fun = self.getCurFun()
         # [1] Compute memory usage for arguments.
-        # TODO do we need to 16-align the stack?
-        argmem = 4 * len(self.children)
+        # TODO do we need to 16-align the stack? probably not, seems to work fine
+        argmem = Codes.var_size * len(self.children)
         # [2] Push arguments.
-        for i in xrange(0, len(self.children)):
+        for i in xrange(len(self.children)):
             self.addInstr(Codes.child(i)) # Leaves the value on stack.
         # [3] Call and pop arguments.
         self.addInstr(['call', self.fname])
-        self.addInstr(['addl', '$%d' % argmem, Codes.top])
+        self.addInstr(['addl', Codes.const(argmem), Codes.top])
         # [4] Push the result if any.
         if self.fsym.ret_type.type != LP.VOID:
             self.addInstr(['pushl', Codes.regA])
@@ -447,6 +496,8 @@ def _StmtConstructor(tree, **kwargs):
     for case in switch(tree.type.type):
         if case(LP.BLOCK):
             return BlockCode
+        if case(LP.DECL):
+            return DeclCode
     return StmtCode
 
 def StmtFactory(tree, **kwargs):

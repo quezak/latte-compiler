@@ -315,7 +315,7 @@ class StmtTree(LatteTree):
         self.checkChildrenTypes()
         # Warn about unused results -- cases where an non-void expression is used as a statement.
         # For if/while -- don't check the condition.
-        for i in xrange(0, len(self.children)):
+        for i in xrange(len(self.children)):
             ch = self.children[i]
             if (isinstance(ch, ExprTree) and ch.value_type.type != LP.VOID and
                     (self.type.type == LP.BLOCK or 
@@ -545,7 +545,7 @@ class FuncallTree(ExprTree):
             if fsym.pos: # Without position it's probably a builtin and the note wouldn't help.
                 Status.addNote(TypecheckError('as declared here', fsym.pos))
         # [3] Check the types of arguments.
-        for i in xrange(0, min(len(self.children), len(fsym.args))):
+        for i in xrange(min(len(self.children), len(fsym.args))):
             self.children[i].expectType(fsym.args[i])
         self.checkChildrenTypes()
 
