@@ -3,10 +3,10 @@
 from __future__ import print_function
 import sys
 
-from Utils import Flags
+import Utils
 
 def debug(*objs):
-    if Flags.debug:
+    if Utils.Flags.debug:
         print('[dbg]', *objs, file=sys.stderr)
 
 def message(*objs):

@@ -1,7 +1,9 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
 
-from FuturePrint import debug, message, warning, error, note
+import sys
+
+import FuturePrint as FP
 
 class Status(object):
     """ A class for collecting status messages (errors, warnings and notes). """
@@ -16,21 +18,21 @@ class Status(object):
 
     @classmethod
     def addError(cls, exc, fatal=False):
-        if cls._errors  == 0: error("ERROR") # task requirements
-        error(str(exc))
+        if cls._errors  == 0: FP.message("ERROR") # task requirements
+        FP.error(str(exc))
         cls._errors += 1
-        # TODO maybe print "FATAL ERROR" and exit(N), users don't like stack traces
         if fatal:
-            raise exc
+            FP.message("aborting after a fatal error")
+            sys.exit(1)
 
     @classmethod
     def addWarning(cls, exc):
-        warning(str(exc))
+        FP.warning(str(exc))
         cls._warnings += 1
 
     @classmethod
     def addNote(cls, exc):
-        note(str(exc))
+        FP.note(str(exc))
 
     @classmethod
     def errors(cls):
