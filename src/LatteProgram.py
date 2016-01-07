@@ -207,6 +207,9 @@ class StmtCode(LatteCode):
             if case(LP.IF):
                 self.label_true = Codes.label()
                 self.label_after = Codes.label()
+            if case(LP.WHILE):
+                self.label_block = Codes.label()
+                self.label_cond = Codes.label()
 
     def _genCode(self):
         for case in switch(self.type.type):
@@ -232,7 +235,16 @@ class StmtCode(LatteCode):
                 self.addInstr(Codes.child(1)) # przepuszcza flow do label_after
                 self.addInstr(['LABEL', self.label_after])
                 break
-            # TODO while
+            if case(LP.WHILE):
+                # children: cond, block
+                self.addInstr(['jmp', self.label_cond])
+                self.addInstr(['LABEL', self.label_block])
+                self.addInstr(Codes.child(1))
+                self.addInstr(['LABEL', self.label_cond])
+                self.addInstr(Codes.child(0))
+                self.addInstr(['cmpl', Codes.const(0), Codes.regA])
+                self.addInstr(['jne', self.label_block]) # true -- jump back to block start
+                break
             if case(LP.ASSIGN):
                 # compute assigned value on stack
                 self.addInstr(Codes.child(1))
