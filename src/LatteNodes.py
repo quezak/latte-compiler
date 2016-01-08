@@ -488,7 +488,7 @@ class BinopTree(ExprTree):
     _int_ops = [LP.MULT, LP.DIV, LP.MOD, LP.PLUS, LP.MINUS,
             LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
     _boolean_ops = [LP.AND, LP.OR, LP.EQ, LP.NEQ]
-    _string_ops = [LP.PLUS, LP.EQ, LP.NEQ]
+    _string_ops = [LP.PLUS]
     _rel_ops = [LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
     @classmethod
     def _getPossibleOps(cls, type):
