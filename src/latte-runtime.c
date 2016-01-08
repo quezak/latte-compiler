@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void printInt(int n) {
     (void) printf("%d\n", n);
@@ -20,4 +21,18 @@ int readInt() {
     return n;
 }
 
-// TODO readString
+char* readString() {
+    char* lineptr = NULL;
+    size_t len = 0;
+    ssize_t read = getline(&lineptr, &len, stdin);
+    if (read <= 0) {
+        if (lineptr) free(lineptr);
+        if (read == 0 || read == EOF) return "";
+        (void) printf("readString error: %s\n", strerror(read));
+        exit(-read);
+    }
+    // strip the newline character appended by getline
+    if (lineptr[read-1] == '\n') lineptr[--read] = 0;
+    if (read && lineptr[read-1] == '\r') lineptr[--read] = 0;
+    return lineptr;
+}
