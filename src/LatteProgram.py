@@ -29,6 +29,7 @@ class Codes(object):
     ebp = '%ebp'
     regcmp = '%al'
     var_size = 4 # every type uses 4 bytes for now
+    strcat_function = 'concatString' # runtime library functions for '+' string operator
 
     @classmethod
     def argAddr(cls, n):
@@ -447,7 +448,8 @@ class BinopCode(ExprCode):
                     self._genCodeBoolop() # logical operation
                 break
             if case(LP.STRING):
-                raise NotImplementedError('string binop')
+                self._genCodeStringop()
+                break
             if case():
                 raise InternalError('wrong binop value type %s')
         self.checkUnusedResult()
@@ -504,6 +506,16 @@ class BinopCode(ExprCode):
         self.addInstr(['LABEL', self.label_jump])
         self.addInstr(['pushl', jval])
         self.addInstr(['LABEL', self.label_nojump])
+
+    def _genCodeStringop(self):
+        # only + (concatenation) for now
+        if self.type.type != LP.PLUS:
+            raise InternalError('wrong string op type %s' % str(self.type))
+        self.addInstr(Codes.child(0))
+        self.addInstr(Codes.child(1))
+        self.addInstr(['call', Codes.strcat_function])
+        self.addInstr(Codes.pushA)
+        # TODO free memory later
 
 
 ### function call #################################################################################

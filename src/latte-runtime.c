@@ -36,3 +36,16 @@ char* readString() {
     if (read && lineptr[read-1] == '\r') lineptr[--read] = 0;
     return lineptr;
 }
+
+char* concatString(const char* a, const char* b) {
+    int lenA = strlen(a);
+    int len = lenA + strlen(b);
+    char* dest = (char*) malloc(len * sizeof(char));
+    if (!dest) {
+        (void) printf("can't concatenate: memory allocation error");
+        exit(2);
+    }
+    strcpy(dest, a);
+    strcpy(dest + lenA, b);
+    return dest;
+}
