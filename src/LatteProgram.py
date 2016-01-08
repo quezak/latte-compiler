@@ -254,6 +254,11 @@ class StmtCode(LatteCode):
                 dest_addr = self.tree.symbol(self.children[0].value).pos
                 self.addInstr(['movl', Codes.regA, dest_addr])
                 break
+            if case(LP.INCR, LP.DECR):
+                op = 'addl' if self.type.type == LP.INCR else 'subl'
+                addr = self.tree.symbol(self.children[0].value).pos
+                self.addInstr([op, Codes.const(1), addr])
+                break
             if case():
                 raise NotImplementedError('unknown statement type: %s' % str(self.type))
 
