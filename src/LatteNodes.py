@@ -367,6 +367,9 @@ class DeclTree(StmtTree):
                 if case(LP.BOOLEAN):
                     item.expr = LiteralTree(LP.BOOLEAN, "false")
                     break
+                if case(LP.STRING):
+                    item.expr = LiteralTree(LP.STRING, '""')
+                    break
                 if case():
                     raise InternalError("no default value for type %s" % str(self.decl_type))
         self.addChild(item.expr)

@@ -410,11 +410,11 @@ class UnopCode(ExprCode):
                 self.addInstr(Codes.pushA)
                 break
             if case(LP.NOT): # logical not
-                self.addInstr([Codes.popA])
+                self.addInstr(Codes.popA)
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['sete', Codes.regcmp])
                 self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
-                self.addInstr([Codes.pushA])
+                self.addInstr(Codes.pushA)
                 break
             if case():
                 raise InternalError('wrong unop value type')
