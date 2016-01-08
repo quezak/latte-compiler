@@ -58,6 +58,17 @@ class Codes(object):
     def const(n):
         return '$' + str(n)
 
+    _strings = {}
+    @classmethod
+    def stringLiteralLabel(cls, string):
+        """ Return a label for a string literal ('.LCx'), but store each constant only once. """
+        if string.value not in cls._strings:
+            label = '.LC%d' % len(cls._strings)
+            cls._strings[string.value] = label
+            return label
+        return cls._strings[string.value]
+
+
 
 ### code ABC ######################################################################################
 class LatteCode(object):
@@ -96,7 +107,7 @@ class LatteCode(object):
     @staticmethod
     def _genInstr(instr):
         """ Some minimal output formatting. """
-        if instr[:1] != '.' and instr[-1:] != ':':
+        if (instr[:1] != '.' or instr.startswith('.string')) and instr[-1:] != ':':
             instr = '\t' + instr
         debug(instr)
         return instr
@@ -130,7 +141,6 @@ class LatteCode(object):
     def getCurFun(self):
         return self.parent.getCurFun() if self.parent else None
 
-
 ### program #######################################################################################
 class ProgCode(LatteCode):
     def __init__(self, tree, **kwargs):
@@ -142,13 +152,19 @@ class ProgCode(LatteCode):
         self.addChild(FunCode(funtree))
 
     def _genCode(self):
-        if not Flags.input_from_stdin(): self.addInstr(['.file', Flags.input_file])
-        # TODO string constants
+        # source file info
+        if not Flags.input_from_stdin(): self.addInstr(['.file', '"%s"' % Flags.input_file])
+        # string constants
+        self.addInstr(['.section', '.rodata'])
+        for string, label in Codes._strings.iteritems():
+            self.addInstr(['LABEL', label])
+            self.addInstr(['.string', string])
+        self.addInstr([])
+        # program code
         self.addInstr(['.text'])
         for i in xrange(len(self.children)):
             self.addInstr([])
             self.addInstr(Codes.child(i))
-
 
 ### function ######################################################################################
 class FunCode(LatteCode):
@@ -372,7 +388,7 @@ class LiteralCode(ExprCode):
                 self.addInstr(Codes.pushA)
                 break
             if case(LP.STRING):
-                raise NotImplementedError('string literal') # TODO
+                self.addInstr(['pushl', '$' + Codes.stringLiteralLabel(self)])
         self.checkUnusedResult()
 
     def isConstant(self):
