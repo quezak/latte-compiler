@@ -103,8 +103,10 @@ stmt returns [lt=StmtTree()]
             (s=stmt { $lt.addChild($s.lt); })?
             (ifelse { $lt.addChild($ifelse.lt); })?
        )
-    | ^(WHILE expr s=stmt)
-        { $lt = StmtTree(LP.WHILE, children=[$expr.lt, $s.lt]); }
+    | ^(WHILE expr
+            { $lt = StmtTree(LP.WHILE, children=[$expr.lt]); }
+            (s=stmt { $lt.addChild($s.lt); })?
+       )
     | expr
         { $lt = $expr.lt; }
     ;

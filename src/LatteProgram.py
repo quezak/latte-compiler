@@ -243,6 +243,7 @@ class StmtCode(LatteCode):
                 if len(self.children) > 1: self.addInstr(Codes.child(1))
                 self.addInstr(['LABEL', self.label_cond])
                 self.addInstr(Codes.child(0))
+                self.addInstr(Codes.popA)
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['jne', self.label_block]) # true -- jump back to block start
                 break
