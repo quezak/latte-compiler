@@ -6,7 +6,7 @@ import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
 from LatteUtils import Symbol, FunSymbol
-from LatteErrors import Status, TypecheckError
+from LatteErrors import Status, TypecheckError, InternalError
 from Utils import switch
 
 
@@ -271,23 +271,22 @@ class StmtTree(LatteTree):
     def checkReturn(self):
         """ Checks if each branch returns a value if needed. Launched by after typechecking
         for the last statement of each function. """
+        fun = self.getCurFun()
         for case in switch(self.type.type):
             if case(LP.RETURN): # return -- obvious case.
                 return
             if case(LP.WHILE): # while -- check the underlying block/instrunction.
-                self.children[1].checkReturn()
-                return
-            if case(LP.IF):
-                # if -- check the underlying blocks. In particular, fail if there is no else block,
+                # check the underlying blocks. In particular, fail if there is no block,
                 # since this is the last function's statement and a false condition would result
                 # in no value returned.
-                self.children[1].checkReturn()
-                # TODO make a 'hasElse()' function in IF?
-                if len(self.children) >= 3:
-                    self.children[2].checkReturn()
-                else:
-                    fun = self.getCurFun()
-                    fun.noReturnError(self.pos)
+                if len(self.children) > 1: self.children[1].checkReturn()
+                else: fun.noReturnError(self.pos)
+                return
+            if case(LP.IF):
+                # TODO make a 'hasElse/hasThen()' function in IF/WHILE?
+                if len(self.children) > 1: self.children[1].checkReturn()
+                elif len(self.children) > 2: self.children[2].checkReturn()
+                else: fun.noReturnError(self.pos)
                 return
         # A block has its own node subclass, so in fail in other cases.
         self.getCurFun().noReturnError(self.pos)

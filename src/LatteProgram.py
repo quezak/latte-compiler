@@ -226,6 +226,7 @@ class StmtCode(LatteCode):
                 # TODO rewrite lazy condition evaluation
                 self.addInstr(Codes.child(0))
                 self.addInstr(Codes.popA)
+                if len(self.children) == 1: break # no need for jumps if there are no blocks
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['jne', self.label_true]) # true -- skok do bloku true
                 if len(self.children) >= 3: # false -- ew. blok false, potem skok za if
@@ -239,7 +240,7 @@ class StmtCode(LatteCode):
                 # children: cond, block
                 self.addInstr(['jmp', self.label_cond])
                 self.addInstr(['LABEL', self.label_block])
-                self.addInstr(Codes.child(1))
+                if len(self.children) > 1: self.addInstr(Codes.child(1))
                 self.addInstr(['LABEL', self.label_cond])
                 self.addInstr(Codes.child(0))
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
@@ -317,8 +318,9 @@ class DeclCode(StmtCode):
         # For each declared item, compute its address on stack (and assign the value if needed).
         for item in self.items:
             addr = Codes.varAddr(fun.nextVarNum())
-            block.tree.addSymbol(Symbol(item.name, self.decl_type, addr))
+            block.tree.addSymbol(Symbol(item.name, self.decl_type.type, addr))
             if item.expr:
+                # TODO probably wrong for int i=i+7 (where the right one is defined before)
                 self.addInstr(Codes.child(item.expr_child))
                 self.addInstr(Codes.popA)
                 self.addInstr(['movl', Codes.regA, addr])

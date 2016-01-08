@@ -98,8 +98,9 @@ stmt returns [lt=StmtTree()]
     | ^(RETURN { $lt = StmtTree(RETURN); }
             (expr { $lt.addChild($expr.lt); })?
        )
-    | ^(IF { if_pos = Status.getCurPos() } expr s=stmt 
-        { $lt = StmtTree(IF, children=[$expr.lt, $s.lt], pos=if_pos); }
+    | ^(IF { if_pos = Status.getCurPos() } expr
+        { $lt = StmtTree(IF, children=[$expr.lt], pos=if_pos); }
+            (s=stmt { $lt.addChild($s.lt); })?
             (ifelse { $lt.addChild($ifelse.lt); })?
        )
     | ^(WHILE expr s=stmt)
