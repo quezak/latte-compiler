@@ -106,6 +106,7 @@ class LatteCode(object):
 
     @staticmethod
     def _genInstr(instr):
+        instr = instr.replace(', #', '  #')
         """ Some minimal output formatting. """
         if (instr[:1] != '.' or instr.startswith('.string')) and instr[-1:] != ':':
             instr = '\t' + instr
@@ -361,7 +362,7 @@ class ExprCode(StmtCode):
     def checkUnusedResult(self):
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
-            self.addInstr(['addl', Codes.const(Codes.var_size), Codes.regA, ' ; unused result'])
+            self.addInstr(['addl', Codes.const(Codes.var_size), Codes.regA, '# unused result'])
 
 
 ### literal #######################################################################################

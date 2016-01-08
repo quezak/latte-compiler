@@ -41,32 +41,32 @@ def main(argv):
     parsed_prog = parser.prog()
     if Status.errors() > 0:
         sys.exit(Status.errors())
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     debug("Tree: ", parsed_prog.tree.toStringTree())
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     # [2] build the tree
     nodes = CommonTreeNodeStream(parsed_prog.tree)
     nodes.setTokenStream(tokens)
     Status.setNodeStream(nodes)
     builder = LatteTreeBuilder(nodes)
     prog_tree = builder.prog()
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     prog_tree.printTree()
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     # [3] typechecks
     prog_tree.checkTypes()
     if Status.errors() > 0:
         sys.exit(Status.errors())
     # [4] build code nodes
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     prog_code = ProgCode(prog_tree)
     prog_code.genCode()
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     instructions = [i for i in prog_code.instructions()]
     if Status.errors() > 0:
         sys.exit(Status.errors())
     # [6] assembly output
-    debug("-----------------------------------------------");
+    debug("-----------------------------------------------")
     try:
         asm_file = sys.stdout if Flags.output_to_stdout() else open(Flags.asm_file, "w")
         for instr in instructions:

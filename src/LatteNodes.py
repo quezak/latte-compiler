@@ -19,7 +19,7 @@ class LatteTree(object):
     def __init__(self, **kwargs):
         """ Initializations common for all nodes, e.g. position and children saving. """
         super(LatteTree, self).__init__()
-        self.ltnum = LatteTree._ltcounter;
+        self.ltnum = LatteTree._ltcounter
         self._ltcounter += 1
         self.symbols = dict()
         self.parent = None
