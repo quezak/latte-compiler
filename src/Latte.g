@@ -130,8 +130,8 @@ eAtom       : IDENT^
             | IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
             ;
-eUnary      : NOT^ eAtom
-            | MINUS eAtom -> ^(NEG eAtom)
+eUnary      : NOT^ eUnary
+            | MINUS eUnary -> ^(NEG eUnary)
             | eAtom
             ;
 eMul        : eUnary ((MULT^ | DIV^ | MOD^) eUnary)*;
