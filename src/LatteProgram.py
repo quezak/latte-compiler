@@ -511,8 +511,8 @@ class BinopCode(ExprCode):
         # only + (concatenation) for now
         if self.type.type != LP.PLUS:
             raise InternalError('wrong string op type %s' % str(self.type))
-        self.addInstr(Codes.child(0))
         self.addInstr(Codes.child(1))
+        self.addInstr(Codes.child(0))
         self.addInstr(['call', Codes.strcat_function])
         self.addInstr(Codes.pushA)
         # TODO free memory later
