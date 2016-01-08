@@ -9,7 +9,7 @@ from LatteParser import Builtins
 from LatteUtils import Symbol, FunSymbol
 from LatteErrors import InternalError
 from LatteNodes import ExprTree, BinopTree
-from Utils import switch
+from Utils import switch, Flags
 
 
 ### code tokens ###################################################################################
@@ -142,7 +142,7 @@ class ProgCode(LatteCode):
         self.addChild(FunCode(funtree))
 
     def _genCode(self):
-        # TODO .file
+        if not Flags.input_from_stdin(): self.addInstr(['.file', Flags.input_file])
         # TODO string constants
         self.addInstr(['.text'])
         for i in xrange(len(self.children)):
