@@ -60,6 +60,7 @@ class Codes(object):
         return '$' + str(n)
 
     _strings = {}
+
     @classmethod
     def stringLiteralLabel(cls, string):
         """ Return a label for a string literal ('.LCx'), but store each constant only once. """
@@ -95,15 +96,15 @@ class LatteCode(object):
         self.instr.append(ins)
 
     @abc.abstractmethod
-    def _genCode(self):
-        """ Generates code for the current node, assuming the children are already generated. """
+    def genCode(self, **kwargs):
+        """ Recursively generates all subtree's code. """
         pass
 
-    def genCode(self):
-        """ Recursively generates all subtree's code. """
-        for child in self.children:
-            child.genCode()
-        self._genCode()
+    def addChildCode(self, num, **kwargs):
+        """ Generates code for the n-th child and inserts it in the node's code. """
+        self.children[num].genCode(**kwargs)
+        self.addInstr(Codes.child(num))
+
 
     @staticmethod
     def _genInstr(instr):
@@ -153,20 +154,21 @@ class ProgCode(LatteCode):
     def addFunCode(self, funtree):
         self.addChild(FunCode(funtree))
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         # source file info
         if not Flags.input_from_stdin(): self.addInstr(['.file', '"%s"' % Flags.input_file])
-        # string constants
-        self.addInstr(['.section', '.rodata'])
-        for string, label in Codes._strings.iteritems():
-            self.addInstr(['LABEL', label])
-            self.addInstr(['.string', string])
         self.addInstr([])
         # program code
         self.addInstr(['.text'])
         for i in xrange(len(self.children)):
             self.addInstr([])
-            self.addInstr(Codes.child(i))
+            self.addChildCode(i)
+        # string constants (after children, so their labels are allocated)
+        self.addInstr([])
+        self.addInstr(['.section', '.rodata'])
+        for string, label in Codes._strings.iteritems():
+            self.addInstr(['LABEL', label])
+            self.addInstr(['.string', string])
 
 ### function ######################################################################################
 class FunCode(LatteCode):
@@ -192,7 +194,7 @@ class FunCode(LatteCode):
         self.used_vars += 1
         return self.used_vars - 1
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         self.addInstr(['.globl', self.name])
         self.addInstr(['.type', self.name, '@function'])
         self.addInstr(['LABEL', self.name])
@@ -203,7 +205,7 @@ class FunCode(LatteCode):
         self.addInstr(['subl', Codes.const((self.var_count+1) * Codes.var_size), Codes.top])
         #self.addInstr(['andl', '$-16', Codes.top]) TODO do we need this?
         # insert block
-        self.addInstr(Codes.child(0))
+        self.addChildCode(0)
         # epilogue
         self.addInstr(['LABEL', self.ret_label])
         self.addInstr(['leave'])
@@ -229,12 +231,12 @@ class StmtCode(LatteCode):
                 self.label_block = Codes.label()
                 self.label_cond = Codes.label()
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         for case in switch(self.type.type):
             if case(LP.RETURN):
                 if self.children:
                     # Evaluate the expression and pop the result to eax for returning.
-                    self.addInstr(Codes.child(0))
+                    self.addChildCode(0)
                     self.addInstr(Codes.popA)
                 # Jump to the return section
                 self.addInstr(['jmp', self.getCurFun().ret_label])
@@ -242,32 +244,32 @@ class StmtCode(LatteCode):
             if case(LP.IF):
                 # children: cond, if-block, (else-block?)
                 # TODO rewrite lazy condition evaluation
-                self.addInstr(Codes.child(0))
+                self.addChildCode(0)
                 self.addInstr(Codes.popA)
                 if len(self.children) == 1: break # no need for jumps if there are no blocks
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['jne', self.label_true]) # true -- skok do bloku true
                 if len(self.children) >= 3: # false -- ew. blok false, potem skok za if
-                    self.addInstr(Codes.child(2))
+                    self.addChildCode(2)
                 self.addInstr(['jmp', self.label_after])
                 self.addInstr(['LABEL', self.label_true]) # blok true
-                self.addInstr(Codes.child(1)) # przepuszcza flow do label_after
+                self.addChildCode(1) # przepuszcza flow do label_after
                 self.addInstr(['LABEL', self.label_after])
                 break
             if case(LP.WHILE):
                 # children: cond, block
                 self.addInstr(['jmp', self.label_cond])
                 self.addInstr(['LABEL', self.label_block])
-                if len(self.children) > 1: self.addInstr(Codes.child(1))
+                if len(self.children) > 1: self.addChildCode(1)
                 self.addInstr(['LABEL', self.label_cond])
-                self.addInstr(Codes.child(0))
+                self.addChildCode(0)
                 self.addInstr(Codes.popA)
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['jne', self.label_block]) # true -- jump back to block start
                 break
             if case(LP.ASSIGN):
                 # compute assigned value on stack
-                self.addInstr(Codes.child(1))
+                self.addChildCode(1)
                 self.addInstr(Codes.popA)
                 # put the value into destination address
                 dest_addr = self.tree.symbol(self.children[0].value).pos
@@ -311,9 +313,9 @@ class BlockCode(StmtCode):
     def getCurBlock(self):
         return self
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         for i in xrange(len(self.children)):
-            self.addInstr(Codes.child(i))
+            self.addChildCode(i)
         fun = self.getCurFun()
         fun.used_vars -= self.var_count # free local variables as the context is closed
 
@@ -335,7 +337,7 @@ class DeclCode(StmtCode):
     def countLocalVars(self):
         return len(self.items)
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         fun = self.getCurFun()
         block = self.getCurBlock()
         # For each declared item, compute its address on stack (and assign the value if needed).
@@ -343,7 +345,7 @@ class DeclCode(StmtCode):
             addr = Codes.varAddr(fun.nextVarNum())
             block.tree.addSymbol(Symbol(item.name, self.decl_type.type, addr))
             if item.expr:
-                self.addInstr(Codes.child(item.expr_child))
+                self.addChildCode(item.expr_child)
                 self.addInstr(Codes.popA)
                 self.addInstr(['movl', Codes.regA, addr])
 
@@ -378,7 +380,7 @@ class LiteralCode(ExprCode):
                     self.value = 0
                 break
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
                 self.addInstr(['pushl', Codes.const(self.value)])
@@ -401,8 +403,8 @@ class UnopCode(ExprCode):
         super(UnopCode, self).__init__(tree, **kwargs)
         self.addChild(ExprFactory(tree.children[0]))
 
-    def _genCode(self):
-        self.addInstr(Codes.child(0))
+    def genCode(self, **kwargs):
+        self.addChildCode(0)
         for case in switch(self.type.type):
             if case(LP.NEG): # binary negation
                 self.addInstr(Codes.popA)
@@ -431,9 +433,9 @@ class BinopCode(ExprCode):
             self.label_jump = Codes.label()
             self.label_nojump = Codes.label()
 
-    def _genCode(self):
-        self.addInstr(Codes.child(0))
-        self.addInstr(Codes.child(1))
+    def genCode(self, **kwargs):
+        self.addChildCode(0)
+        self.addChildCode(1)
         # detect operator type
         for case in switch(self.value_type.type):
             if case(LP.INT):
@@ -526,14 +528,14 @@ class FuncallCode(ExprCode):
         for exprtree in tree.children:
             self.addChild(ExprFactory(exprtree))
 
-    def _genCode(self):
+    def genCode(self, **kwargs):
         fun = self.getCurFun()
         # [1] Compute memory usage for arguments.
         # TODO do we need to 16-align the stack? probably not, seems to work fine
         argmem = Codes.var_size * len(self.children)
         # [2] Push arguments in reversed order.
         for i in reversed(xrange(len(self.children))):
-            self.addInstr(Codes.child(i)) # Leaves the value on stack.
+            self.addChildCode(i) # Leaves the value on stack.
         # [3] Call and pop arguments.
         self.addInstr(['call', self.fname])
         self.addInstr(['addl', Codes.const(argmem), Codes.top])
