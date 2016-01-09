@@ -37,7 +37,9 @@ char* readString() {
     return lineptr;
 }
 
-char* concatString(const char* a, const char* b) {
+// Binary operator code generation pushes the left operand first,
+// so for convenience this function accepts arguments in reverse.
+char* concatString(const char* b, const char* a) {
     int lenA = strlen(a);
     int len = lenA + strlen(b);
     char* dest = (char*) malloc(len * sizeof(char));

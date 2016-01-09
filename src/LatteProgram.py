@@ -509,11 +509,12 @@ class BinopCode(ExprCode):
 
     def _genCodeStringop(self):
         # only + (concatenation) for now
+        # note: the generic binop code pushes left operand first, so for convenience our library
+        # concatenation function accepts arguments in reversed order.
         if self.type.type != LP.PLUS:
             raise InternalError('wrong string op type %s' % str(self.type))
-        self.addInstr(Codes.child(1))
-        self.addInstr(Codes.child(0))
         self.addInstr(['call', Codes.strcat_function])
+        self.addInstr(['addl', Codes.const(2 * Codes.var_size), Codes.top])
         self.addInstr(Codes.pushA)
         # TODO free memory later
 
@@ -532,8 +533,8 @@ class FuncallCode(ExprCode):
         # [1] Compute memory usage for arguments.
         # TODO do we need to 16-align the stack? probably not, seems to work fine
         argmem = Codes.var_size * len(self.children)
-        # [2] Push arguments.
-        for i in xrange(len(self.children)):
+        # [2] Push arguments in reversed order.
+        for i in reversed(xrange(len(self.children))):
             self.addInstr(Codes.child(i)) # Leaves the value on stack.
         # [3] Call and pop arguments.
         self.addInstr(['call', self.fname])
