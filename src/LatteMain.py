@@ -33,7 +33,6 @@ def main(argv):
     debug("ASM OUTPUT: ", Flags.asm_file)
     debug("BIN OUTPUT: ", Flags.bin_file)
     # [2] parse the code
-    # TODO catch parser errors
     lexer = LatteLexer(filestream)
     tokens = CommonTokenStream(lexer)
     Status.setTokenStream(tokens)

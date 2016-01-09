@@ -62,7 +62,6 @@ class LatteTree(object):
     def addSymbol(self, symbol):
         """ Add a symbol in the current context. """
         name = symbol.name
-        # TODO czy aby na pewno?
         # not self.hasSymbol(name) -- we search for conflicts only on the current level
         if name in self.symbols:
             Status.addError(TypecheckError('conflicting declaration of `%s` as `%s`' % (
@@ -216,7 +215,6 @@ class FunTree(LatteTree):
     def setBlock(self, block):
         self.addChild(block)
 
-    # TODO chyba nie powinnismy czyscic argumentow z tablicy symboli?
     def addArg(self, arg):
         debug('fun addArg=%s type=%d at=%s' % (arg.name, arg.type, arg.pos))
         sym = Symbol(arg.name, arg.type, pos=arg.pos)

@@ -282,7 +282,6 @@ class StmtCode(LatteCode):
                 raise NotImplementedError('unknown statement type: %s' % str(self.type))
 
     def countLocalVars(self):
-        # TODO wrap one-instruction then-blocks in a block node
         """ Calculate stack space needed to allocate all local variables in subtree.
         
         This is the total size of declarations directly in a block plus maximum size needed by any
@@ -344,7 +343,6 @@ class DeclCode(StmtCode):
             addr = Codes.varAddr(fun.nextVarNum())
             block.tree.addSymbol(Symbol(item.name, self.decl_type.type, addr))
             if item.expr:
-                # TODO probably wrong for int i=i+7 (where the right one is defined before)
                 self.addInstr(Codes.child(item.expr_child))
                 self.addInstr(Codes.popA)
                 self.addInstr(['movl', Codes.regA, addr])
