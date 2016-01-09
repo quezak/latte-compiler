@@ -37,7 +37,8 @@ class Symbol(object):
         if not other:
             debug('checkWith on %s with None' % (str(self)))
             return # Assuming that None here means an error was already reported.
-        if not self == other:
+        # If either type is TYPE_ERROR, it means an error was already reported.
+        if (not self == other) and self.type != LP.TYPE_ERROR and other.type != TYPE_ERROR:
             Status.addError(TypecheckError('expression has type "%s", expected "%s"' %
                 (str(other), str(self)), pos))
 

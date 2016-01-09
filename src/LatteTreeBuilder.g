@@ -91,8 +91,10 @@ stmt returns [lt=StmtTree()]
     | ^(DECL type { $lt = DeclTree($type.id); }
             (ditem { $lt.addItem($ditem.item); })+
        )
-    | ^(ASSIGN { as_pos = Status.getCurPos() } IDENT expr)
-        { $lt = StmtTree(ASSIGN, children=[LiteralTree(IDENT, $IDENT.text), $expr.lt], pos=as_pos); }
+    | ^(ASSIGN { $lt = StmtTree(ASSIGN); } 
+            IDENT { $lt.addChild(LiteralTree(IDENT, $IDENT.text)); }
+            expr { $lt.addChild($expr.lt); }
+       )
     | ^(op=(INCR|DECR) IDENT)
         { $lt = StmtTree($op.type, children=[LiteralTree(IDENT, $IDENT.text, pos_off=-2)]); }
     | ^(RETURN { $lt = StmtTree(RETURN); }

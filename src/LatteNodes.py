@@ -161,8 +161,8 @@ class ProgTree(LatteTree):
 
     def addFunTree(self, fun_tree):
         """ Adds a function node to the program tree. """
-        debug('addFunTree name=%s ret=%d argcount=%d pos=%s' %
-                (fun_tree.name, fun_tree.ret_type.type, len(fun_tree.args), fun_tree.pos))
+        debug('addFunTree name=%s ret=%s argcount=%d pos=%s' %
+                (fun_tree.name, str(fun_tree.ret_type), len(fun_tree.args), fun_tree.pos))
         self.addChild(fun_tree)
         self.addSymbol(fun_tree.getFunSymbol())
 
@@ -440,13 +440,18 @@ class LiteralTree(ExprTree):
         self._printIndented('= %s %s' % (str(self.type), self.value))
 
     def getType(self):
+        # return immediately if the type is already calculated
+        if self.value_type: return self.value_type
+        # otherwise, set the type as the variable was declared
         for case in switch(self.type.type):
             if case(LP.IDENT):
                 if not self.hasSymbol(self.value):
-                    Status.addError(TypecheckError('use of undefined variable "%s"' % self.value,
+                    Status.addError(TypecheckError('use of undeclared variable "%s"' % self.value,
                         self.pos))
-                    # TODO add a fake symbol to prevent more errors?
-                    return None
+                    Status.addNote(TypecheckError('each undeclared identifier is reported only '
+                        'once in each function'))
+                    # add a dummy type-error symbol to prevent further errors about this variable
+                    self.getCurFun().addSymbol(Symbol(self.value, LP.TYPE_ERROR, self.pos))
                 self.setValueType(self.symbol(self.value))
                 break
             if case():

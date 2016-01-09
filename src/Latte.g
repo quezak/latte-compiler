@@ -22,6 +22,7 @@ tokens {
     DINIT;
     FUNCALL;
     NEG;
+    TYPE_ERROR;
 }
 
 // Header pasted on the top of parser file.
