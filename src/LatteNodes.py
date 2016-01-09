@@ -65,16 +65,16 @@ class LatteTree(object):
         # TODO czy aby na pewno?
         # not self.hasSymbol(name) -- we search for conflicts only on the current level
         if name in self.symbols:
-            Status.addError(TypecheckError('conflicting declaration of "%s" as "%s"' % (
+            Status.addError(TypecheckError('conflicting declaration of `%s` as `%s`' % (
                 name, str(symbol)), symbol.pos))
             if self.symbol(name).pos:
-                msg = 'previously declared here as "%s"'
+                msg = 'previously declared here as `%s`'
             else:
-                msg = 'previously declared built-in as "%s"'
+                msg = 'previously declared built-in as `%s`'
             Status.addNote(TypecheckError(msg %
                 str(self.symbol(name)), self.symbol(name).pos))
         elif self.hasSymbol(name):
-            debug('%s: shadowing symbol "%s %s"' % (symbol.pos, str(symbol), name))
+            debug('%s: shadowing symbol `%s %s`' % (symbol.pos, str(symbol), name))
         self.symbols[name] = symbol
 
     def hasSymbol(self, name):
@@ -179,12 +179,12 @@ class ProgTree(LatteTree):
             main_sym = self.symbol(Builtins.MAIN)
             main_exp = FunSymbol(Builtins.MAIN, Symbol('', LP.INT), [], None)
             if main_sym != main_exp:
-                Status.addError(TypecheckError('"%s" has wrong type: %s' % 
+                Status.addError(TypecheckError('`%s` has wrong type: `%s`' % 
                     (Builtins.MAIN, str(main_sym)), main_sym.pos))
-                Status.addNote(TypecheckError('expected "%s" type: %s' %
+                Status.addNote(TypecheckError('expected `%s` type: `%s`' %
                     (Builtins.MAIN, str(main_exp)), main_sym.pos))
         else:
-            Status.addError('"%s" function not defined' % Builtins.MAIN)
+            Status.addError(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
         self.checkChildrenTypes()
         # Checking the symbols builds symbol tables, so we need to clear them before continuing.
         self._clearSymbols()
@@ -237,13 +237,13 @@ class FunTree(LatteTree):
         return self
 
     def noReturnError(self, pos):
-        Status.addError(TypecheckError('no return statement in function "%s" returning "%s"' %
+        Status.addError(TypecheckError('no return statement in function `%s` returning `%s`' %
             (self.name, str(self.ret_type)), pos if pos != '0:0' else self.pos))
 
     def checkTypes(self):
         for arg in self.args:
             if arg.type == LP.VOID:
-                Status.addError(TypecheckError('void function argument', arg.pos))
+                Status.addError(TypecheckError('`void` function argument', arg.pos))
         self.checkChildrenTypes()
         # After checking types in child nodes, check if a value is returned where needed (in the
         # last statement of non-void functions).
@@ -313,7 +313,7 @@ class StmtTree(LatteTree):
                 else: # Check the returned expression.
                     if fun.ret_type.type == LP.VOID:
                         Status.addError(
-                                TypecheckError('return with a value in function returning void',
+                                TypecheckError('return with a value in function returning `void`',
                                     self.pos))
                     self.children[0].expectType(fun.ret_type)
                 break
@@ -401,7 +401,7 @@ class DeclTree(StmtTree):
     def checkTypes(self):
         """ Check types of the expressions assigned to the declared variables, if any. """
         if self.decl_type.type == LP.VOID:
-            Status.addError(TypecheckError("void variable declaration", self.pos))
+            Status.addError(TypecheckError("`void` variable declaration", self.pos))
             return
         block = self.getCurBlock()
         for item in self.items:
@@ -467,7 +467,7 @@ class LiteralTree(ExprTree):
         for case in switch(self.type.type):
             if case(LP.IDENT):
                 if not self.hasSymbol(self.value):
-                    Status.addError(TypecheckError('use of undeclared variable "%s"' % self.value,
+                    Status.addError(TypecheckError('use of undeclared variable `%s`' % self.value,
                         self.pos))
                     Status.addNote(TypecheckError('each undeclared identifier is reported only '
                         'once in each function'))
@@ -477,7 +477,7 @@ class LiteralTree(ExprTree):
                 break
             if case(LP.INT):
                 if int(self.value) > self._int_max:
-                    Status.addError(TypecheckError('integer constant too large: %s' % self.value,
+                    Status.addError(TypecheckError('integer constant too large: `%s`' % self.value,
                         self.pos))
                 # intentional fall-through
             if case():
@@ -551,7 +551,7 @@ class BinopTree(ExprTree):
             # [3] Mark that the second subexpression should have the same type.
             self.children[1].expectType(self.children[0].value_type)
         else:
-            Status.addError(TypecheckError('operator cannot accept "%s" argument' %
+            Status.addError(TypecheckError('operator cannot accept `%s` argument' %
                 str(self.children[0].value_type), self.pos))
         # [4] Check the second subexpression.
         self.children[1].checkTypes()
@@ -572,17 +572,18 @@ class FuncallTree(ExprTree):
     def checkTypes(self):
         # [1] Check if the called name exists and is a function.
         if not self.hasSymbol(self.fname):
-            Status.addError(TypecheckError('call to undefined function "%s"' % self.fname, self.pos))
+            Status.addError(TypecheckError('call to undeclared function `%s`' % self.fname,
+                self.pos))
             return
         fsym = self.symbol(self.fname)
         if not fsym.isFunction():
-            Status.addError(TypecheckError('cannot call symbol "%s" of type "%s"' %
+            Status.addError(TypecheckError('cannot call symbol `%s` of type `%s`' %
                 (self.fname, str(fsym)), self.pos))
             return
         # [2] Check the number of arguments.
         self.setValueType(fsym.ret_type)
         if len(self.children) != len(fsym.args):
-            Status.addError(TypecheckError('%d arguments given, function "%s" takes %d' %
+            Status.addError(TypecheckError('%d arguments given, function `%s` takes %d' %
                 (len(self.children), self.fname, len(fsym.args)), self.pos))
             if fsym.pos: # Without position it's probably a builtin and the note wouldn't help.
                 Status.addNote(TypecheckError('as declared here', fsym.pos))

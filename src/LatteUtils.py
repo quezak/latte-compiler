@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 
 from antlr3.tree import CommonTree, CommonTreeAdaptor
-from FuturePrint import debug, message, warning, error, note
+from FuturePrint import Colors, debug, message, warning, error, note
 from LatteErrors import Status, TypecheckError
 import LatteParser as LP
 
@@ -39,7 +39,7 @@ class Symbol(object):
             return # Assuming that None here means an error was already reported.
         # If either type is TYPE_ERROR, it means an error was already reported.
         if (not self == other) and self.type != LP.TYPE_ERROR and other.type != LP.TYPE_ERROR:
-            Status.addError(TypecheckError('expression has type "%s", expected "%s"' %
+            Status.addError(TypecheckError('expression has type `%s`, expected `%s`' %
                 (str(other), str(self)), pos))
 
 
