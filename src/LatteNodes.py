@@ -237,13 +237,18 @@ class FunTree(LatteTree):
         return self
 
     def noReturnError(self, pos):
-            Status.addError(TypecheckError('no return statement in function "%s" returning "%s"' %
-                (self.name, str(self.ret_type)), pos))
+        Status.addError(TypecheckError('no return statement in function "%s" returning "%s"' %
+            (self.name, str(self.ret_type)), pos if pos != '0:0' else self.pos))
 
     def checkTypes(self):
+        for arg in self.args:
+            if arg.type == LP.VOID:
+                Status.addError(TypecheckError('void function argument', arg.pos))
         self.checkChildrenTypes()
         # After checking types in child nodes, check if a value is returned where needed (in the
         # last statement of non-void functions).
+        # TODO if return is earlier on all branches, don't fail but warn about unreached code
+        # TODO (use has_return property already set somewhere)
         if self.ret_type.type != LP.VOID:
             if self.children:
                 self.children[-1].checkReturn()
@@ -285,7 +290,7 @@ class StmtTree(LatteTree):
             if case(LP.IF):
                 # TODO make a 'hasElse/hasThen()' function in IF/WHILE?
                 if len(self.children) > 1: self.children[1].checkReturn()
-                elif len(self.children) > 2: self.children[2].checkReturn()
+                if len(self.children) > 2: self.children[2].checkReturn()
                 else: fun.noReturnError(self.pos)
                 return
         # A block has its own node subclass, so in fail in other cases.
@@ -304,12 +309,21 @@ class StmtTree(LatteTree):
                 self.has_return = True
                 fun = self.getCurFun()
                 if not self.children: # No value returned: check if function returns void.
-                    Symbol('', LP.VOID).checkWith(fun.ret_type, self.pos)
+                    fun.ret_type.checkWith(Symbol('', LP.VOID), self.pos)
                 else: # Check the returned expression.
+                    if fun.ret_type.type == LP.VOID:
+                        Status.addError(
+                                TypecheckError('return with a value in function returning void',
+                                    self.pos))
                     self.children[0].expectType(fun.ret_type)
                 break
             if case(LP.IF, LP.WHILE): # Children: cond, stmt+. Check if condition is boolean.
                 self.children[0].expectType(Symbol('', LP.BOOLEAN))
+                # disallow declaration as the only statement
+                for child in self.children:
+                    if child.type.type == LP.DECL:
+                        Status.addError(TypecheckError('variable declaration not allowed here',
+                            child.pos))
                 break
         self.checkChildrenTypes()
         # Warn about unused results -- cases where an non-void expression is used as a statement.
@@ -370,6 +384,8 @@ class DeclTree(StmtTree):
                 if case(LP.STRING):
                     item.expr = LiteralTree(LP.STRING, '""')
                     break
+                if case(LP.VOID):
+                    return; # just to avoid errors
                 if case():
                     raise InternalError("no default value for type %s" % str(self.decl_type))
         self.addChild(item.expr)
@@ -384,6 +400,9 @@ class DeclTree(StmtTree):
 
     def checkTypes(self):
         """ Check types of the expressions assigned to the declared variables, if any. """
+        if self.decl_type.type == LP.VOID:
+            Status.addError(TypecheckError("void variable declaration", self.pos))
+            return
         block = self.getCurBlock()
         for item in self.items:
             dsym = Symbol(item.name, self.decl_type.type, item.pos)
@@ -420,6 +439,8 @@ class ExprTree(StmtTree):
 
 ### literal #######################################################################################
 class LiteralTree(ExprTree):
+
+    _int_max = 2147483647
     """ Node representing a literal expression. """
     @classmethod
     def _getRealType(cls, type):
@@ -454,6 +475,11 @@ class LiteralTree(ExprTree):
                     self.getCurFun().addSymbol(Symbol(self.value, LP.TYPE_ERROR, self.pos))
                 self.setValueType(self.symbol(self.value))
                 break
+            if case(LP.INT):
+                if int(self.value) > self._int_max:
+                    Status.addError(TypecheckError('integer constant too large: %s' % self.value,
+                        self.pos))
+                # intentional fall-through
             if case():
                 self.setValueType(self.type)
         return self.value_type

@@ -18,6 +18,8 @@ class Status(object):
 
     @classmethod
     def addError(cls, exc, fatal=False):
+        # TODO with debug off, gather the messages until success or the first error
+        #      (so the 'ERROR' line will be the first on output...)
         if cls._errors  == 0: FP.message("ERROR") # task requirements
         FP.error(str(exc))
         cls._errors += 1

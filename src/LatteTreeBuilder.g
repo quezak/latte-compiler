@@ -96,7 +96,8 @@ stmt returns [lt=StmtTree()]
             expr { $lt.addChild($expr.lt); }
        )
     | ^(op=(INCR|DECR) IDENT)
-        { $lt = StmtTree($op.type, children=[LiteralTree(IDENT, $IDENT.text, pos_off=-2)]); }
+        { $lt = StmtTree($op.type, children=[LiteralTree(IDENT, $IDENT.text, pos_off=-2)],
+        pos_off=-2); }
     | ^(RETURN { $lt = StmtTree(RETURN); }
             (expr { $lt.addChild($expr.lt); })?
        )

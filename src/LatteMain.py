@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 
 from __future__ import print_function
-from subprocess import call
+from subprocess import check_output, CalledProcessError, STDOUT
 import sys
 
 import LatteParser as LP
@@ -77,9 +77,15 @@ def main(argv):
         Status.addError(err, fatal=True)
     # [7] link runtime library
     if not Flags.output_to_stdout():
-        rc = call(["gcc", "-m32", Flags.runtime_file, Flags.asm_file, "-o", Flags.bin_file])
-        if rc != 0:
-            Status.addError(LatteError("linking failed"), fatal=True)
+        # capture the output, so the possible 'ERROR' message is still in first line
+        try:
+            gcc_out = check_output(
+                    ["gcc", "-m32", Flags.runtime_file, Flags.asm_file, "-o", Flags.bin_file],
+                    stderr=STDOUT)
+            if gcc_out:
+                Status.addWarning(LatteError("linking messages:\n" + gcc_out))
+        except CalledProcessError, err:
+            Status.addError(LatteError("linking failed:\n" + err.output), fatal=True)
     if Status.errors() == 0:
         message("OK") # task requirements
     sys.exit(Status.errors())
