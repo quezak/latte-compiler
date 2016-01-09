@@ -225,11 +225,16 @@ class StmtCode(LatteCode):
                 self.addChild(StmtFactory(child))
         for case in switch(self.type.type):
             if case(LP.IF):
-                self.label_true = Codes.label()
                 self.label_after = Codes.label()
+                # if there are less blocks, just evaluate condition and jump to label_after
+                self.label_then = Codes.label() if len(self.children) > 1 else self.label_after
+                self.label_else = Codes.label() if len(self.children) > 2 else self.label_after
+                break
             if case(LP.WHILE):
-                self.label_block = Codes.label()
+                self.label_after = Codes.label()
                 self.label_cond = Codes.label()
+                self.label_block = Codes.label() if len(self.children) > 1 else self.label_cond
+                break
 
     def genCode(self, **kwargs):
         for case in switch(self.type.type):
@@ -242,30 +247,26 @@ class StmtCode(LatteCode):
                 self.addInstr(['jmp', self.getCurFun().ret_label])
                 break
             if case(LP.IF):
-                # children: cond, if-block, (else-block?)
-                # TODO rewrite lazy condition evaluation
-                self.addChildCode(0)
-                self.addInstr(Codes.popA)
-                if len(self.children) == 1: break # no need for jumps if there are no blocks
-                self.addInstr(['cmpl', Codes.const(0), Codes.regA])
-                self.addInstr(['jne', self.label_true]) # true -- skok do bloku true
-                if len(self.children) >= 3: # false -- ew. blok false, potem skok za if
+                # children: cond, (then-block)?, (else-block)?
+                self.addChildCode(0, jump_true=self.label_then, jump_false=self.label_else)
+                if len(self.children) > 1: # there is a then-block
+                    self.addInstr(['LABEL', self.label_then])
+                    self.addChildCode(1)
+                if len(self.children) > 2: # there is an else-block
+                    self.addInstr(['jmp', self.label_after]) # first jump out of then-block
+                    self.addInstr(['LABEL', self.label_else])
                     self.addChildCode(2)
-                self.addInstr(['jmp', self.label_after])
-                self.addInstr(['LABEL', self.label_true]) # blok true
-                self.addChildCode(1) # przepuszcza flow do label_after
                 self.addInstr(['LABEL', self.label_after])
                 break
             if case(LP.WHILE):
-                # children: cond, block
-                self.addInstr(['jmp', self.label_cond])
-                self.addInstr(['LABEL', self.label_block])
-                if len(self.children) > 1: self.addChildCode(1)
+                # children: cond, (block)?
+                if len(self.children) > 1: # there is a loop block
+                    self.addInstr(['jmp', self.label_cond])
+                    self.addInstr(['LABEL', self.label_block])
+                    self.addChildCode(1)
                 self.addInstr(['LABEL', self.label_cond])
-                self.addChildCode(0)
-                self.addInstr(Codes.popA)
-                self.addInstr(['cmpl', Codes.const(0), Codes.regA])
-                self.addInstr(['jne', self.label_block]) # true -- jump back to block start
+                self.addChildCode(0, label_true=self.label_block, label_false=self.label_after)
+                self.addInstr(['LABEL', self.label_after])
                 break
             if case(LP.ASSIGN):
                 # compute assigned value on stack
@@ -411,7 +412,7 @@ class UnopCode(ExprCode):
                 self.addInstr(['negl', Codes.regA])
                 self.addInstr(Codes.pushA)
                 break
-            if case(LP.NOT): # logical not
+            if case(LP.NOT): # logical not TODO lazy evaluation tricks
                 self.addInstr(Codes.popA)
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['sete', Codes.regcmp])
@@ -474,6 +475,7 @@ class BinopCode(ExprCode):
                 raise InternalError('wrong int op type %s' % str(self.type))
 
     def _genCodeRelop(self):
+        # TODO rewrite to finish lazy evaluation
         try:
             opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
                     LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
@@ -487,6 +489,7 @@ class BinopCode(ExprCode):
         self.addInstr(Codes.pushA)
 
     def _genCodeBoolop(self):
+        # TODO rewrite to finish lazy evaluation
         if self.type.type == LP.AND:
             jval = Codes.const(0)
             nval = Codes.const(1)
