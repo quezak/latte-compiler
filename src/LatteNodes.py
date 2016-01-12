@@ -235,7 +235,7 @@ class FunTree(LatteTree):
         return self
 
     def noReturnError(self, pos):
-        Status.addError(TypecheckError('no return statement in function `%s` returning `%s`' %
+        Status.addError(TypecheckError('missing return statement in function `%s` returning `%s`' %
             (self.name, str(self.ret_type)), pos if pos != '0:0' else self.pos))
 
     def checkTypes(self):
@@ -243,15 +243,11 @@ class FunTree(LatteTree):
             if arg.type == LP.VOID:
                 Status.addError(TypecheckError('`void` function argument', arg.pos))
         self.checkChildrenTypes()
-        # After checking types in child nodes, check if a value is returned where needed (in the
-        # last statement of non-void functions).
-        # TODO if return is earlier on all branches, don't fail but warn about unreached code
-        # TODO (use has_return property already set somewhere)
+        # For non-void functions, check if the block always returns.
         if self.ret_type.type != LP.VOID:
-            if self.children:
-                self.children[-1].checkReturn()
-            else:
-                self.noReturnError(self.pos)
+            ret_stmt = self.children[0].checkReturn()
+            if not ret_stmt:
+                self.noReturnError(self.children[0].pos)
 
 
 ### statement #####################################################################################
@@ -260,7 +256,6 @@ class StmtTree(LatteTree):
     def __init__(self, type=None, **kwargs):
         super(StmtTree, self).__init__(**kwargs)
         self.type = Symbol('', type, Status.getCurPos())
-        self.has_return = False
 
     def printTree(self):
         if self.children:
@@ -272,28 +267,61 @@ class StmtTree(LatteTree):
 
     # sprawdza, czy instrukcja ma na końcu/ach return (a właściwie wypisuje błąd, jeśli nie ma)
     def checkReturn(self):
-        """ Checks if each branch returns a value if needed. Launched by after typechecking
-        for the last statement of each function. """
-        fun = self.getCurFun()
+        """ Checks if the current statement always returns, and returns the return statement. """
         for case in switch(self.type.type):
+            # TODO maybe consider call to error() a returning statement?
             if case(LP.RETURN): # return -- obvious case.
-                return
-            if case(LP.WHILE): # while -- check the underlying block/instrunction.
-                # check the underlying blocks. In particular, fail if there is no block,
-                # since this is the last function's statement and a false condition would result
-                # in no value returned.
-                if len(self.children) > 1: self.children[1].checkReturn()
-                else: fun.noReturnError(self.pos)
-                return
+                return self
+            if case(LP.WHILE):
+                if len(self.children) < 2: # no loop block, nothing to check
+                    return None
+                # if the condition is a constant, warn if the block is unreachable or unexitable
+                if self.children[0].type.type == LP.BOOLEAN:
+                    if self.children[0].value == 'true':
+                        block_ret = self.children[1].checkReturn()
+                        if not block_ret:
+                            Status.addWarning(TypecheckError(
+                                'infinite loop without guaranteed return', self.pos))
+                        return block_ret
+                    else: # while(false)
+                        self.children[1].warnUnreachableCode(reason=TypecheckError(
+                            'loop has false condition', self.pos))
+                        return None
+                # otherwise, condition is an expression
+                return self.children[1].checkReturn()
             if case(LP.IF):
-                # TODO make a 'hasElse/hasThen()' function in IF/WHILE?
-                if len(self.children) > 1: self.children[1].checkReturn()
-                if len(self.children) > 2: self.children[2].checkReturn()
-                else: fun.noReturnError(self.pos)
-                return
-        # A block has its own node subclass, so in fail in other cases.
-        self.getCurFun().noReturnError(self.pos)
+                # if the condition is a constant, check the executed branch, and warn that the
+                # other is unreachable
+                if self.children[0].type.type == LP.BOOLEAN:
+                    try:
+                        check = {'true': 1, 'false': 2}[self.children[0].value]
+                        unreachable = {'true': 2, 'false': 1}[self.children[0].value]
+                    except KeyError:
+                        raise InternalError('invalid boolean constant `%s` at %s' %
+                                self.children[0].value, self.children[0].pos)
+                    if len(self.children) > unreachable:
+                        self.children[unreachable].warnUnreachableCode(reason=TypecheckError(
+                            'constant condition prevents entering one branch', self.pos))
+                    if len(self.children) > check:
+                        return self.children[check].checkReturn()
+                    return None
+                else: # otherwise, condition is an expression, check both branches
+                    # both branches should return if we want to say this statement returns
+                    then_ret = None if len(self.children) <= 1 else self.children[1].checkReturn()
+                    else_ret = None if len(self.children) <= 2 else self.children[2].checkReturn()
+                    return then_ret and else_ret
+        # in all other cases
+        return None
 
+    def warnUnreachableCode(self, reason=None):
+        """ Prints a warning that code in current node is unreachable (e.g. after if(false)).
+        
+        `reason` can be an additional exception explaining why. """
+        # Prevent multiple issues of the warning when there are many statements after return.
+        if not hasattr(self, 'unreachable_code_reported'):
+            Status.addWarning(TypecheckError('statement is unreachable', self.pos))
+            if reason: Status.addNote(reason)
+            self.unreachable_code_reported = True
 
     def checkTypes(self):
         for case in switch(self.type.type):
@@ -304,7 +332,6 @@ class StmtTree(LatteTree):
                 Symbol('', LP.INT).checkWith(self.children[0].getType(), self.pos)
                 break
             if case(LP.RETURN): # Check if returned value type matches the function declaration.
-                self.has_return = True
                 fun = self.getCurFun()
                 if not self.children: # No value returned: check if function returns void.
                     fun.ret_type.checkWith(Symbol('', LP.VOID), self.pos)
@@ -353,12 +380,16 @@ class BlockTree(StmtTree):
         return self
 
     def checkReturn(self):
-        """ Checks if the block returns a value if needed. Launched by after typechecking
-        for the last statement of each function. """
-        if self.children:
-            self.children[-1].checkReturn()
-        else:
-            self.getCurFun().noReturnError(self.pos)
+        """ Checks if the current statement always returns, and returns the return statement. """
+        for i in xrange(len(self.children)):
+            ret_stmt = self.children[i].checkReturn()
+            # if a non-last child is a returning statement, warn that further code is unreachable
+            if ret_stmt:
+                if i < len(self.children)-1:
+                    self.children[i+1].warnUnreachableCode(reason=TypecheckError(
+                        'function returns here', ret_stmt.pos))
+                return ret_stmt
+        return None
 
 
 ### declaration ###################################################################################
