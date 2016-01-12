@@ -3,8 +3,6 @@
 #include <string.h>
 
 void printInt(int n) {
-    // TODO strip following whitespace? for cases readInt(); readString()
-    // TODO what if the next input char is not a number?
     (void) printf("%d\n", n);
 }
 
@@ -20,9 +18,17 @@ void error() {
 int readInt() {
     int n;
     scanf("%d", &n);
+    // To properly return from readString() after a call to readInt(), consume the possible
+    // whitespace following the returned number (but at most one newline, to enable readString
+    // to return empty lines).
+    char next = getc(stdin);
+    while (next == ' ' || next == '\t') next = getc(stdin); // consume horizontal whitespace
+    if (next == '\r') next = getc(stdin); // in case of DOS endlines
+    if (next != EOF && next != '\n' && next != '\r') ungetc(next, stdin);
     return n;
 }
 
+// Return a line from standard input (including empty lines).
 char* readString() {
     char* lineptr = NULL;
     size_t len = 0;
