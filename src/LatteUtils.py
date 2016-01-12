@@ -1,8 +1,7 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
 
-from antlr3.tree import CommonTree, CommonTreeAdaptor
-from FuturePrint import Colors, debug, message, warning, error, note
+from FuturePrint import debug
 from LatteErrors import Status, TypecheckError
 import LatteParser as LP
 
@@ -23,7 +22,8 @@ class Symbol(object):
 
     def __ne__(self, other):
         result = self.__eq__(other)
-        if result is NotImplemented: return result
+        if result is NotImplemented:
+            return result
         return not result
 
     def __str__(self):
@@ -36,11 +36,11 @@ class Symbol(object):
         """ Check if two symbols have matching type. """
         if not other:
             debug('check_with on %s with None' % (str(self)))
-            return # Assuming that None here means an error was already reported.
+            return  # Assuming that None here means an error was already reported.
         # If either type is TYPE_ERROR, it means an error was already reported.
         if (not self == other) and self.type != LP.TYPE_ERROR and other.type != LP.TYPE_ERROR:
             Status.add_error(TypecheckError('expression has type `%s`, expected `%s`' %
-                (str(other), str(self)), pos))
+                                            (str(other), str(self)), pos))
 
 
 class FunSymbol(Symbol):
@@ -62,16 +62,17 @@ class FunSymbol(Symbol):
 
     def __ne__(self, other):
         result = self.__eq__(other)
-        if result is NotImplemented: return result
+        if result is NotImplemented:
+            return result
         return not result
 
     def __str__(self):
         args = ', '.join(map(str, self.args))
         return 'function (' + args + ') -> ' + str(self.ret_type)
-    
+
     def is_function(self):
         return True
-    
+
 
 class FunArg(object):
     """ A simple class for a funcion argument, before it gets registered as a symbol. """
@@ -87,4 +88,3 @@ class DeclArg(object):
         self.name = name
         self.expr = expr
         self.pos = pos
-

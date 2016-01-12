@@ -10,7 +10,7 @@ from LatteErrors import Status, TypecheckError, InternalError
 from Utils import switch
 
 
-### node ABC ######################################################################################
+# node ABC ######################################################################################
 class LatteTree(object):
     """ Abstract base class for all node kinds. """
     __metaclass__ = abc.ABCMeta
@@ -49,12 +49,6 @@ class LatteTree(object):
             self.pos = Status.get_cur_pos(offset)
         else:
             self.save_pos(-1)
-            # TODO test if we still need those
-            #if not self.pos or self.pos == '0:0':
-                #self.save_pos(-2)
-            #if not self.pos or self.pos == '0:0':
-                #self.save_pos(-3)
-
 
     def get_counter(self):
         return self._ltcounter
@@ -70,8 +64,7 @@ class LatteTree(object):
                 msg = 'previously declared here as `%s`'
             else:
                 msg = 'previously declared built-in as `%s`'
-            Status.add_note(TypecheckError(msg %
-                str(self.symbol(name)), self.symbol(name).pos))
+            Status.add_note(TypecheckError(msg % str(self.symbol(name)), self.symbol(name).pos))
         elif self.has_symbol(name):
             debug('%s: shadowing symbol `%s %s`' % (symbol.pos, str(symbol), name))
         self.symbols[name] = symbol
@@ -137,7 +130,7 @@ class LatteTree(object):
             child._clear_symbols()
 
 
-### program #######################################################################################
+# program #######################################################################################
 class ProgTree(LatteTree):
     """ Node representing the whole program. """
     def __init__(self, **kwargs):
@@ -161,7 +154,7 @@ class ProgTree(LatteTree):
     def add_fun_tree(self, fun_tree):
         """ Adds a function node to the program tree. """
         debug('add_fun_tree name=%s ret=%s argcount=%d pos=%s' %
-                (fun_tree.name, str(fun_tree.ret_type), len(fun_tree.args), fun_tree.pos))
+              (fun_tree.name, str(fun_tree.ret_type), len(fun_tree.args), fun_tree.pos))
         self.add_child(fun_tree)
         self.add_symbol(fun_tree.get_fun_symbol())
 
@@ -178,10 +171,10 @@ class ProgTree(LatteTree):
             main_sym = self.symbol(Builtins.MAIN)
             main_exp = FunSymbol(Builtins.MAIN, Symbol('', LP.INT), [], None)
             if main_sym != main_exp:
-                Status.add_error(TypecheckError('`%s` has wrong type: `%s`' % 
-                    (Builtins.MAIN, str(main_sym)), main_sym.pos))
+                Status.add_error(TypecheckError('`%s` has wrong type: `%s`' %
+                                                (Builtins.MAIN, str(main_sym)), main_sym.pos))
                 Status.add_note(TypecheckError('expected `%s` type: `%s`' %
-                    (Builtins.MAIN, str(main_exp)), main_sym.pos))
+                                               (Builtins.MAIN, str(main_exp)), main_sym.pos))
         else:
             Status.add_error(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
         self.check_children_types()
@@ -194,7 +187,7 @@ class ProgTree(LatteTree):
             child._clear_symbols()
 
 
-### function ######################################################################################
+# function ######################################################################################
 class FunTree(LatteTree):
     """ Node representing a single function definition. """
     def __init__(self, **kwargs):
@@ -211,7 +204,7 @@ class FunTree(LatteTree):
 
     def set_ret_type(self, ret_type):
         self.ret_type = Symbol(self.name, ret_type, Status.get_cur_pos())
-        
+
     def set_block(self, block):
         self.add_child(block)
 
@@ -235,7 +228,8 @@ class FunTree(LatteTree):
         return self
 
     def no_return_error(self, pos):
-        Status.add_error(TypecheckError('missing return statement in function `%s` returning `%s`' %
+        Status.add_error(TypecheckError(
+            'missing return statement in function `%s` returning `%s`' %
             (self.name, str(self.ret_type)), pos if pos != '0:0' else self.pos))
 
     def check_types(self):
@@ -250,7 +244,7 @@ class FunTree(LatteTree):
                 self.no_return_error(self.children[0].pos)
 
 
-### statement #####################################################################################
+# statement #####################################################################################
 class StmtTree(LatteTree):
     """ Node representing one statement. """
     def __init__(self, type=None, **kwargs):
@@ -270,10 +264,10 @@ class StmtTree(LatteTree):
         """ Checks if the current statement always returns, and returns the return statement. """
         for case in switch(self.type.type):
             # TODO maybe consider call to error() a returning statement?
-            if case(LP.RETURN): # return -- obvious case.
+            if case(LP.RETURN):  # return -- obvious case.
                 return self
             if case(LP.WHILE):
-                if len(self.children) < 2: # no loop block, nothing to check
+                if len(self.children) < 2:  # no loop block, nothing to check
                     return None
                 # if the condition is a constant, warn if the block is unreachable or unexitable
                 if self.children[0].type.type == LP.BOOLEAN:
@@ -284,7 +278,7 @@ class StmtTree(LatteTree):
                                 'infinite loop without guaranteed return', self.pos))
                             return InfiniteLoopMark(self.pos)
                         return block_ret
-                    else: # while(false)
+                    else:  # while(false)
                         self.children[1].warn_unreachable_code(reason=TypecheckError(
                             'loop has false condition', self.pos))
                         return None
@@ -299,14 +293,14 @@ class StmtTree(LatteTree):
                         unreachable = {'true': 2, 'false': 1}[self.children[0].value]
                     except KeyError:
                         raise InternalError('invalid boolean constant `%s` at %s' %
-                                self.children[0].value, self.children[0].pos)
+                                            self.children[0].value, self.children[0].pos)
                     if len(self.children) > unreachable:
                         self.children[unreachable].warn_unreachable_code(reason=TypecheckError(
                             'constant condition prevents entering one branch', self.pos))
                     if len(self.children) > check:
                         return self.children[check].check_return()
                     return None
-                else: # otherwise, condition is an expression, check both branches
+                else:  # otherwise, condition is an expression, check both branches
                     # both branches should return if we want to say this statement returns
                     then_ret = None if len(self.children) <= 1 else self.children[1].check_return()
                     else_ret = None if len(self.children) <= 2 else self.children[2].check_return()
@@ -316,40 +310,40 @@ class StmtTree(LatteTree):
 
     def warn_unreachable_code(self, reason=None):
         """ Prints a warning that code in current node is unreachable (e.g. after if(false)).
-        
+
         `reason` can be an additional exception explaining why. """
         # Prevent multiple issues of the warning when there are many statements after return.
         if not hasattr(self, 'unreachable_code_reported'):
             Status.add_warning(TypecheckError('statement is unreachable', self.pos))
-            if reason: Status.add_note(reason)
+            if reason:
+                Status.add_note(reason)
             self.unreachable_code_reported = True
 
     def check_types(self):
         for case in switch(self.type.type):
-            if case(LP.ASSIGN): # Children: ident, expr, check if types match.
+            if case(LP.ASSIGN):  # Children: ident, expr, check if types match.
                 self.children[1].expect_type(self.children[0].get_type())
                 break
-            if case(LP.INCR, LP.DECR): # Child: ident, expected type: int.
+            if case(LP.INCR, LP.DECR):  # Child: ident, expected type: int.
                 Symbol('', LP.INT).check_with(self.children[0].get_type(), self.pos)
                 break
-            if case(LP.RETURN): # Check if returned value type matches the function declaration.
+            if case(LP.RETURN):  # Check if returned value type matches the function declaration.
                 fun = self.get_cur_fun()
-                if not self.children: # No value returned: check if function returns void.
+                if not self.children:  # No value returned: check if function returns void.
                     fun.ret_type.check_with(Symbol('', LP.VOID), self.pos)
-                else: # Check the returned expression.
+                else:  # Check the returned expression.
                     if fun.ret_type.type == LP.VOID:
-                        Status.add_error(
-                                TypecheckError('return with a value in function returning `void`',
-                                    self.pos))
+                        Status.add_error(TypecheckError(
+                            'return with a value in function returning `void`', self.pos))
                     self.children[0].expect_type(fun.ret_type)
                 break
-            if case(LP.IF, LP.WHILE): # Children: cond, stmt+. Check if condition is boolean.
+            if case(LP.IF, LP.WHILE):  # Children: cond, stmt+. Check if condition is boolean.
                 self.children[0].expect_type(Symbol('', LP.BOOLEAN))
                 # disallow declaration as the only statement
                 for child in self.children:
                     if child.type.type == LP.DECL:
-                        Status.add_error(TypecheckError('variable declaration not allowed here',
-                            child.pos))
+                        Status.add_error(TypecheckError(
+                            'variable declaration not allowed here', child.pos))
                 break
         self.check_children_types()
         # Warn about unused results -- cases where an non-void expression is used as a statement.
@@ -357,14 +351,14 @@ class StmtTree(LatteTree):
         for i in xrange(len(self.children)):
             ch = self.children[i]
             if (isinstance(ch, ExprTree) and ch.value_type.type != LP.VOID and
-                    (self.type.type == LP.BLOCK or 
-                        (self.type.type in [LP.IF, LP.WHILE] and i > 0)
-                )):
+                    (self.type.type == LP.BLOCK or
+                     (self.type.type in [LP.IF, LP.WHILE] and i > 0)
+                     )):
                 Status.add_warning(TypecheckError('unused result of expression', ch.pos))
                 ch.unused_result = True
 
 
-### code block ####################################################################################
+# code block ####################################################################################
 class BlockTree(StmtTree):
     """ Node representing a block of instructions. """
     def __init__(self, **kwargs):
@@ -396,7 +390,7 @@ class BlockTree(StmtTree):
         return None
 
 
-### declaration ###################################################################################
+# declaration ###################################################################################
 class DeclTree(StmtTree):
     """ Node representing a declaration (possibly of many variables of the same type). """
     def __init__(self, dtype, **kwargs):
@@ -412,15 +406,15 @@ class DeclTree(StmtTree):
                     item.expr = LiteralTree(LP.INT, 0)
                     break
                 if case(LP.BOOLEAN):
-                    item.expr = LiteralTree(LP.BOOLEAN, "false")
+                    item.expr = LiteralTree(LP.BOOLEAN, 'false')
                     break
                 if case(LP.STRING):
                     item.expr = LiteralTree(LP.STRING, '""')
                     break
                 if case(LP.VOID):
-                    return; # just to avoid errors
+                    return  # just to avoid errors
                 if case():
-                    raise InternalError("no default value for type %s" % str(self.decl_type))
+                    raise InternalError('no default value for type %s' % str(self.decl_type))
         self.add_child(item.expr)
 
     def print_tree(self):
@@ -434,7 +428,7 @@ class DeclTree(StmtTree):
     def check_types(self):
         """ Check types of the expressions assigned to the declared variables, if any. """
         if self.decl_type.type == LP.VOID:
-            Status.add_error(TypecheckError("`void` variable declaration", self.pos))
+            Status.add_error(TypecheckError('`void` variable declaration', self.pos))
             return
         block = self.get_cur_block()
         for item in self.items:
@@ -445,10 +439,10 @@ class DeclTree(StmtTree):
         self.check_children_types()
 
 
-### expression ####################################################################################
+# expression ####################################################################################
 class ExprTree(StmtTree):
     """ Node representing one expression.
-    
+
     Typechecking invariants:
         * when check_types() returns value_type must be set
         * if value_type and expected_type are both set, they match xor an error was reported. """
@@ -470,19 +464,23 @@ class ExprTree(StmtTree):
             self.expected_type.check_with(self.value_type, self.pos)
 
 
-### literal #######################################################################################
+# literal #######################################################################################
 class LiteralTree(ExprTree):
-
-    _int_max = 2147483647
     """ Node representing a literal expression. """
+    _int_max = 2147483647
+
     @classmethod
     def _get_value_type(cls, type):
         """ Translate lexer's literal types to actual data types. """
-        for case in switch(type):
-            if case(LP.NUMBER): return LP.INT
-            if case(LP.STRINGLIT): return LP.STRING
-            if case(LP.TRUE, LP.FALSE): return LP.BOOLEAN
-        return type
+        try:
+            return {
+                LP.NUMBER: LP.INT,
+                LP.STRINGLIT: LP.STRING,
+                LP.TRUE: LP.BOOLEAN,
+                LP.FALSE: LP.BOOLEAN,
+            }[type]
+        except KeyError:
+            return type
 
     def __init__(self, type, value, **kwargs):
         real_type = self._get_value_type(type)
@@ -495,23 +493,24 @@ class LiteralTree(ExprTree):
 
     def get_type(self):
         # return immediately if the type is already calculated
-        if self.value_type: return self.value_type
+        if self.value_type:
+            return self.value_type
         # otherwise, set the type as the variable was declared
         for case in switch(self.type.type):
             if case(LP.IDENT):
                 if not self.has_symbol(self.value):
-                    Status.add_error(TypecheckError('use of undeclared variable `%s`' % self.value,
-                        self.pos))
-                    Status.add_note(TypecheckError('each undeclared identifier is reported only '
-                        'once in each function'))
+                    Status.add_error(TypecheckError(
+                        'use of undeclared variable `%s`' % self.value, self.pos))
+                    Status.add_note(TypecheckError(
+                        'each undeclared identifier is reported only once in each function'))
                     # add a dummy type-error symbol to prevent further errors about this variable
                     self.get_cur_fun().add_symbol(Symbol(self.value, LP.TYPE_ERROR, self.pos))
                 self.set_value_type(self.symbol(self.value))
                 break
             if case(LP.INT):
                 if int(self.value) > self._int_max:
-                    Status.add_error(TypecheckError('integer constant too large: `%s`' % self.value,
-                        self.pos))
+                    Status.add_error(TypecheckError(
+                        'integer constant too large: `%s`' % self.value, self.pos))
                 # intentional fall-through
             if case():
                 self.set_value_type(self.type)
@@ -522,16 +521,16 @@ class LiteralTree(ExprTree):
         self.get_type()
 
 
-### unary operator ################################################################################
+# unary operator ################################################################################
 class UnopTree(ExprTree):
     """ Node for unary expressions. """
     @classmethod
     def _get_typeid_for_op(cls, op):
         """ Return a type that can be used with the operator (only one for now). """
-        for case in switch(op.type):
-            if case(LP.NOT): return LP.BOOLEAN
-            if case(LP.NEG): return LP.INT
-        return None
+        try:
+            return {LP.NOT: LP.BOOLEAN, LP.NEG: LP.INT, }[op.type]
+        except KeyError:
+            return None
 
     def __init__(self, type, expr, **kwargs):
         super(UnopTree, self).__init__(type, children=[expr], **kwargs)
@@ -545,23 +544,28 @@ class UnopTree(ExprTree):
         self.check_children_types()
 
 
-### binary operator ###############################################################################
+# binary operator ###############################################################################
 class BinopTree(ExprTree):
     """ Node for binary expressions. """
+
     # Possible operator lists for each type.
     _int_ops = [LP.MULT, LP.DIV, LP.MOD, LP.PLUS, LP.MINUS,
-            LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
+                LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
     _boolean_ops = [LP.AND, LP.OR, LP.EQ, LP.NEQ]
     _string_ops = [LP.PLUS]
     _rel_ops = [LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
+
     @classmethod
     def _get_possible_ops(cls, type):
         """ Return a list of operators that can be used with a given type. """
-        for case in switch(type.type):
-            if case(LP.INT): return cls._int_ops
-            if case(LP.BOOLEAN): return cls._boolean_ops
-            if case(LP.STRING): return cls._string_ops
-        return []
+        try:
+            return {
+                LP.INT: cls._int_ops,
+                LP.BOOLEAN: cls._boolean_ops,
+                LP.STRING: cls._string_ops,
+            }[type.type]
+        except KeyError:
+            return []
 
     def __init__(self, type, expa, expb, **kwargs):
         super(BinopTree, self).__init__(type, children=[expa, expb], **kwargs)
@@ -584,13 +588,14 @@ class BinopTree(ExprTree):
             # [3] Mark that the second subexpression should have the same type.
             self.children[1].expect_type(self.children[0].value_type)
         else:
-            Status.add_error(TypecheckError('operator cannot accept `%s` argument' %
-                str(self.children[0].value_type), self.pos))
+            Status.add_error(TypecheckError(
+                'operator cannot accept `%s` argument' % str(self.children[0].value_type),
+                self.pos))
         # [4] Check the second subexpression.
         self.children[1].check_types()
 
 
-### function call #################################################################################
+# function call #################################################################################
 class FuncallTree(ExprTree):
     """ Node for function calls. """
     def __init__(self, fname, **kwargs):
@@ -605,20 +610,21 @@ class FuncallTree(ExprTree):
     def check_types(self):
         # [1] Check if the called name exists and is a function.
         if not self.has_symbol(self.fname):
-            Status.add_error(TypecheckError('call to undeclared function `%s`' % self.fname,
-                self.pos))
+            Status.add_error(TypecheckError(
+                'call to undeclared function `%s`' % self.fname, self.pos))
             return
         fsym = self.symbol(self.fname)
         if not fsym.is_function():
-            Status.add_error(TypecheckError('cannot call symbol `%s` of type `%s`' %
-                (self.fname, str(fsym)), self.pos))
+            Status.add_error(TypecheckError(
+                'cannot call symbol `%s` of type `%s`' % (self.fname, str(fsym)), self.pos))
             return
         # [2] Check the number of arguments.
         self.set_value_type(fsym.ret_type)
         if len(self.children) != len(fsym.args):
-            Status.add_error(TypecheckError('%d arguments given, function `%s` takes %d' %
+            Status.add_error(TypecheckError(
+                '%d arguments given, function `%s` takes %d' %
                 (len(self.children), self.fname, len(fsym.args)), self.pos))
-            if fsym.pos: # Without position it's probably a builtin and the note wouldn't help.
+            if fsym.pos:  # Without position it's probably a builtin and the note wouldn't help.
                 Status.add_note(TypecheckError('as declared here', fsym.pos))
         # [3] Check the types of arguments.
         for i in xrange(min(len(self.children), len(fsym.args))):
@@ -626,8 +632,9 @@ class FuncallTree(ExprTree):
         self.check_children_types()
 
 
-### helper class to mark code after an infinite loop unreachable
+# helper class to mark code after an infinite loop unreachable
 class InfiniteLoopMark(StmtTree):
-    type = 10000;
+    type = 10000
+
     def __init__(self, pos):
         super(InfiniteLoopMark, self).__init__(type=InfiniteLoopMark.type, pos=pos)

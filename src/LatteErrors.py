@@ -7,6 +7,7 @@ import re
 import FuturePrint as FP
 import Utils
 
+
 class Status(object):
     """ A class for collecting status messages (errors, warnings and notes). """
     _errors = 0
@@ -17,13 +18,9 @@ class Status(object):
     _header_output = False
 
     @classmethod
-    def errors(cls):
-        return cls._errors
-    
-    @classmethod
     def _add_message(cls, handler, exc):
-        """ Store message to be output with handler() after the initial "OK"/"ERROR"
-        
+        """ Store message to be output with handler() after the initial 'OK'/'ERROR'
+
         (but print immediately if debug mode is on) """
         if not Utils.Flags.debug:
             cls._all_messages.append((handler, exc))
@@ -32,9 +29,9 @@ class Status(object):
 
     @classmethod
     def flush(cls):
-        """ Flush the output buffer, adding the required "OK"/"ERROR" on first line. """
+        """ Flush the output buffer, adding the required 'OK'/'ERROR' on first line. """
         if not cls._header_output:
-            FP.message("OK" if cls._errors == 0 else "ERROR")
+            FP.message('OK' if cls._errors == 0 else 'ERROR')
             cls._header_output = True
         for handler, exc in cls._all_messages:
             handler(exc)
@@ -46,7 +43,7 @@ class Status(object):
         cls._errors += 1
         if fatal:
             cls.flush()
-            FP.message("aborting after a fatal error")
+            FP.message('aborting after a fatal error')
             sys.exit(cls._errors if cls._errors > 0 else 1)
 
     @classmethod
@@ -61,7 +58,7 @@ class Status(object):
     @classmethod
     def errors(cls):
         return cls._errors
-    
+
     @classmethod
     def warnings(cls):
         return cls._warnings
@@ -73,9 +70,11 @@ class Status(object):
     @classmethod
     def get_cur_pos(cls, offset=-1):
         """ Try to get the current token's position in source code. """
-        if not cls._nodes.LT(offset): return None
+        if not cls._nodes.LT(offset):
+            return None
         token = cls._nodes.LT(offset).token
-        if not token: return None
+        if not token:
+            return None
         return '%d:%d' % (token.line, token.charPositionInLine+1)
 
     @classmethod
@@ -122,4 +121,3 @@ class ParserError(LatteError):
 
 class TypecheckError(LatteError):
     _type = 'type error'
-

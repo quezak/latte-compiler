@@ -34,12 +34,12 @@ from LatteErrors import Status, ParserError
 
 # Predefined functions names.
 class Builtins:
-    PRINT_INT = 'printInt';
-    PRINT_STRING = 'printString';
-    READ_INT = 'readInt';
-    READ_STRING = 'readString';
-    ERROR = 'error';
-    MAIN = 'main';
+    PRINT_INT = 'printInt'
+    PRINT_STRING = 'printString'
+    READ_INT = 'readInt'
+    READ_STRING = 'readString'
+    ERROR = 'error'
+    MAIN = 'main'
 }
 
 // Header pasted on the top of lexer file.
@@ -84,7 +84,6 @@ def main(argv):
     tokens = CommonTokenStream(lexer)
     parser = LatteParser(tokens)
     parser.print_dot_tree()
-    #parser.parse()
 }
  
 /*------------------------------------------------------------------
