@@ -248,7 +248,7 @@ class StmtCode(LatteCode):
                 break
             if case(LP.IF):
                 # children: cond, (then-block)?, (else-block)?
-                self.addChildCode(0, jump_true=self.label_then, jump_false=self.label_else)
+                self.addChildCode(0, on_true=self.label_then, on_false=self.label_else)
                 if len(self.children) > 1: # there is a then-block
                     self.addInstr(['LABEL', self.label_then])
                     self.addChildCode(1)
@@ -265,7 +265,7 @@ class StmtCode(LatteCode):
                     self.addInstr(['LABEL', self.label_block])
                     self.addChildCode(1)
                 self.addInstr(['LABEL', self.label_cond])
-                self.addChildCode(0, label_true=self.label_block, label_false=self.label_after)
+                self.addChildCode(0, on_true=self.label_block, on_false=self.label_after)
                 self.addInstr(['LABEL', self.label_after])
                 break
             if case(LP.ASSIGN):
@@ -359,12 +359,19 @@ class ExprCode(StmtCode):
         self.value_type = tree.value_type
 
     def isConstant(self):
+        # TODO do we need this?
         return False
 
     def checkUnusedResult(self):
+        # TODO optimize this out -- just don't push the value before...
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
             self.addInstr(['addl', Codes.const(Codes.var_size), Codes.regA, '# unused result'])
+
+    @staticmethod
+    def hasJumpCodes(d):
+        """ Check if a dictionary contains jump codes for lazy boolean evaluation """
+        return 'on_true' in d and 'on_false' in d
 
 
 ### literal #######################################################################################
@@ -382,6 +389,24 @@ class LiteralCode(ExprCode):
                 break
 
     def genCode(self, **kwargs):
+        if self.hasJumpCodes(kwargs):
+            # bool literal as part of condition evaluation -- jump basing on value
+            for case in switch(self.type.type):
+                if case(LP.BOOLEAN):
+                    label = {0: kwargs['on_false'], 1: kwargs['on_true']}[self.value]
+                    self.addInstr(['jmp', label])
+                    break
+                if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
+                    self.addInstr(['movl', self.tree.symbol(self.value).pos, Codes.regA])
+                    # note: comparing with 0, so on equality jump to false!
+                    self.addInstr(['cmpl', Codes.const(0), Codes.regA])
+                    self.addInstr(['je', kwargs['on_false']])
+                    self.addInstr(['jmp', kwargs['on_true']])
+                    break
+                if case():
+                    raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
+                        str(self.type), self.tree.pos))
+            return
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
                 self.addInstr(['pushl', Codes.const(self.value)])
@@ -405,14 +430,19 @@ class UnopCode(ExprCode):
         self.addChild(ExprFactory(tree.children[0]))
 
     def genCode(self, **kwargs):
-        self.addChildCode(0)
         for case in switch(self.type.type):
-            if case(LP.NEG): # binary negation
+            if case(LP.NEG): # integer negation
+                self.addChildCode(0)
                 self.addInstr(Codes.popA)
                 self.addInstr(['negl', Codes.regA])
                 self.addInstr(Codes.pushA)
                 break
             if case(LP.NOT): # logical not TODO lazy evaluation tricks
+                if self.hasJumpCodes(kwargs):
+                    # called as part of condition evaluation -- just forward the jump labels
+                    self.addChildCode(0, on_true=kwargs['on_false'], on_false=kwargs['on_true'])
+                    return
+                self.addChildCode(0)
                 self.addInstr(Codes.popA)
                 self.addInstr(['cmpl', Codes.const(0), Codes.regA])
                 self.addInstr(['sete', Codes.regcmp])
@@ -430,13 +460,8 @@ class BinopCode(ExprCode):
         super(BinopCode, self).__init__(tree, **kwargs)
         self.addChild(ExprFactory(tree.children[0]))
         self.addChild(ExprFactory(tree.children[1]))
-        if self.type.type in [LP.AND, LP.OR]:
-            self.label_jump = Codes.label()
-            self.label_nojump = Codes.label()
 
     def genCode(self, **kwargs):
-        self.addChildCode(0)
-        self.addChildCode(1)
         # detect operator type
         for case in switch(self.value_type.type):
             if case(LP.INT):
@@ -444,9 +469,9 @@ class BinopCode(ExprCode):
                 break
             if case(LP.BOOLEAN):
                 if self.type.type in BinopTree._rel_ops:
-                    self._genCodeRelop() # comparision
+                    self._genCodeRelop(**kwargs) # comparision
                 else:
-                    self._genCodeBoolop() # logical operation
+                    self._genCodeBoolop(**kwargs) # logical operation
                 break
             if case(LP.STRING):
                 self._genCodeStringop()
@@ -456,6 +481,8 @@ class BinopCode(ExprCode):
         self.checkUnusedResult()
 
     def _genCodeIntop(self):
+        self.addChildCode(0)
+        self.addChildCode(1)
         for case in switch(self.type.type):
             if case(LP.PLUS, LP.MINUS, LP.MULT):
                 opcode = { LP.PLUS: 'addl', LP.MINUS: 'subl', LP.MULT: 'imull' }[self.type.type]
@@ -474,48 +501,67 @@ class BinopCode(ExprCode):
             if case():
                 raise InternalError('wrong int op type %s' % str(self.type))
 
-    def _genCodeRelop(self):
-        # TODO rewrite to finish lazy evaluation
-        try:
-            opcode = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
-                    LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
-        except KeyError:
-            raise InternalError('wrong rel op type %s' % str(self.type))
+    def _genCodeRelop(self, **kwargs):
+        self.addChildCode(0)
+        self.addChildCode(1)
         self.addInstr(Codes.popD)
         self.addInstr(Codes.popA)
         self.addInstr(['cmpl', Codes.regD, Codes.regA])
-        self.addInstr([opcode, Codes.regcmp])
-        self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
-        self.addInstr(Codes.pushA)
+        try:
+            if self.hasJumpCodes(kwargs):
+                # part of condition evaluation -- select the conditional jump instruction
+                self.label_true = kwargs['on_true']
+                self.label_false = kwargs['on_false']
+                jmp_code = { LP.EQ: 'je', LP.NEQ: 'jne', LP.GT: 'jg', LP.GEQ: 'jge',
+                        LP.LT: 'jl', LP.LEQ: 'jle' }[self.type.type]
+                debug('relop %s in cond' % jmp_code)
+                self.addInstr([jmp_code, self.label_true])
+                self.addInstr(['jmp', self.label_false])
+            else:
+                # expression returning bool -- select the comparision set instruction
+                set_code = { LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
+                        LP.LT: 'setl', LP.LEQ: 'setle' }[self.type.type]
+                debug('relop %s in expr' % set_code)
+                self.addInstr([set_code, Codes.regcmp])
+                self.addInstr(['movzbl', Codes.regcmp, Codes.regA])
+                self.addInstr(Codes.pushA)
+        except KeyError:
+            raise InternalError('wrong rel op type %s' % str(self.type))
 
-    def _genCodeBoolop(self):
-        # TODO rewrite to finish lazy evaluation
-        if self.type.type == LP.AND:
-            jval = Codes.const(0)
-            nval = Codes.const(1)
-        elif self.type.type == LP.OR:
-            jval = Codes.const(1)
-            nval = Codes.const(0)
-        else:
-            raise InternalError('wrong bool op type %s' % str(self.type))
-        self.addInstr(Codes.popA)
-        self.addInstr(Codes.popD)
-        self.addInstr(['cmpl', jval, Codes.regD])
-        self.addInstr(['je', self.label_jump])
-        self.addInstr(['cmpl', jval, Codes.regA])
-        self.addInstr(['je', self.label_jump])
-        self.addInstr(['pushl', nval])
-        self.addInstr(['jmp', self.label_nojump])
-        self.addInstr(['LABEL', self.label_jump])
-        self.addInstr(['pushl', jval])
-        self.addInstr(['LABEL', self.label_nojump])
+    def _genCodeBoolop(self, **kwargs):
+        self.label_true = kwargs.get('on_true', Codes.label())
+        self.label_false = kwargs.get('on_false', Codes.label())
+        self.label_right = Codes.label() # additional label to jump straight to the right operand
+        for case in switch(self.type.type):
+            if case(LP.AND):
+                self.addChildCode(0, on_true=self.label_right, on_false=self.label_false)
+                self.addInstr(['LABEL', self.label_right])
+                self.addChildCode(1, on_true=self.label_true, on_false=self.label_false)
+                break
+            if case(LP.OR):
+                self.addChildCode(0, on_true=self.label_true, on_false=self.label_right)
+                self.addInstr(['LABEL', self.label_right])
+                self.addChildCode(1, on_true=self.label_true, on_false=self.label_false)
+                break
+            if case():
+                raise InternalError('wrong bool op type %s' % str(self.type))
+        # if no jump keywords were given, the result will be used as a value -- push it
+        if not self.hasJumpCodes(kwargs):
+            self.label_after = Codes.label()
+            self.addInstr(['LABEL', self.label_true])
+            self.addInstr(['pushl', Codes.const(1)])
+            self.addInstr(['jmp', self.label_after])
+            self.addInstr(['LABEL', self.label_false])
+            self.addInstr(['pushl', Codes.const(0)])
+            self.addInstr(['LABEL', self.label_after])
 
     def _genCodeStringop(self):
-        # only + (concatenation) for now
-        # note: the generic binop code pushes left operand first, so for convenience our library
-        # concatenation function accepts arguments in reversed order.
         if self.type.type != LP.PLUS:
             raise InternalError('wrong string op type %s' % str(self.type))
+        # only + (concatenation) for now
+        # add children in reversed order, so they are on stack ready to call the concat lib function
+        self.addChildCode(1)
+        self.addChildCode(0)
         self.addInstr(['call', Codes.strcat_function])
         self.addInstr(['addl', Codes.const(2 * Codes.var_size), Codes.top])
         self.addInstr(Codes.pushA)
@@ -537,15 +583,28 @@ class FuncallCode(ExprCode):
         # TODO do we need to 16-align the stack? probably not, seems to work fine
         argmem = Codes.var_size * len(self.children)
         # [2] Push arguments in reversed order.
+        # TODO fix this: we can't evaluate the args in reverse order, even though it's convenient
+        #      mayba add a 'result_dest' kwarg to expr codes?
         for i in reversed(xrange(len(self.children))):
             self.addChildCode(i) # Leaves the value on stack.
         # [3] Call and pop arguments.
         self.addInstr(['call', self.fname])
-        self.addInstr(['addl', Codes.const(argmem), Codes.top])
-        # [4] Push the result if any.
-        if self.fsym.ret_type.type != LP.VOID:
-            self.addInstr(['pushl', Codes.regA])
-        self.checkUnusedResult()
+        if argmem > 0: self.addInstr(['addl', Codes.const(argmem), Codes.top])
+        # [4] finish depending on how we were called:
+        if self.hasJumpCodes(kwargs):
+            if self.fsym.ret_type.type != LP.BOOLEAN:
+                raise InternalError('jump-expr codes for non-bool function %s %s at %s!' % (
+                    self.fname, str(self.fsym), self.tree.pos))
+            # [4a] bool function as part of condition evaluation -- jump basing on the result
+            # note: comparing with 0, so on equality jump to false!
+            self.addInstr(['cmpl', Codes.const(0), Codes.regA])
+            self.addInstr(['je', kwargs['on_false']])
+            self.addInstr(['jmp', kwargs['on_true']])
+        else:
+            # [4b] normal expression -- push the return value on stack if needed
+            if self.fsym.ret_type.type != LP.VOID:
+                self.addInstr(['pushl', Codes.regA])
+            self.checkUnusedResult()
 
 
 ### factories #####################################################################################

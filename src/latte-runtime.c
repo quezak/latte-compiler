@@ -3,6 +3,8 @@
 #include <string.h>
 
 void printInt(int n) {
+    // TODO strip following whitespace? for cases readInt(); readString()
+    // TODO what if the next input char is not a number?
     (void) printf("%d\n", n);
 }
 
@@ -37,9 +39,7 @@ char* readString() {
     return lineptr;
 }
 
-// Binary operator code generation pushes the left operand first,
-// so for convenience this function accepts arguments in reverse.
-char* concatString(const char* b, const char* a) {
+char* concatString(const char* a, const char* b) {
     int lenA = strlen(a);
     int len = lenA + strlen(b);
     char* dest = (char*) malloc(len * sizeof(char));
