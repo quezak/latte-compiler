@@ -49,7 +49,7 @@ from LatteErrors import Status, ParserError
 
 // Additional methods for parser's class.
 @members {
-def printDotTree(self):
+def print_dot_tree(self):
     """ Prints the AST in DOT format, which can be visualized using e.g. graphviz. """
     tree = self.prog().tree
     gen = DOTTreeGenerator()
@@ -63,7 +63,7 @@ def printDotTree(self):
 def displayRecognitionError(self, tokenNames, e):
     """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
-    Status.addError(ParserError(msg, e.line, e.charPositionInLine))
+    Status.add_error(ParserError(msg, e.line, e.charPositionInLine))
 }
 
 // Additional methods for lexer's class.
@@ -71,7 +71,7 @@ def displayRecognitionError(self, tokenNames, e):
 def displayRecognitionError(self, tokenNames, e):
     """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
-    Status.addError(ParserError(msg, e.line, e.charPositionInLine))
+    Status.add_error(ParserError(msg, e.line, e.charPositionInLine))
 }
 
 @main {
@@ -83,7 +83,7 @@ def main(argv):
     lexer = LatteLexer(ANTLRInputStream(sys.stdin))
     tokens = CommonTokenStream(lexer)
     parser = LatteParser(tokens)
-    parser.printDotTree()
+    parser.print_dot_tree()
     #parser.parse()
 }
  

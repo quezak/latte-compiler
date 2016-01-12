@@ -9,34 +9,34 @@ import Utils
 class Colors:
     """ ANSI coloring text for terminal output """
     @staticmethod
-    def _colorIfTerm(color):
+    def _color_if_term(color):
         if (not sys.stderr.isatty()) or (not Utils.Flags.output_colors): return ''
         return '\033[' + color + 'm'
 
     @classmethod
-    def reset(cls): return cls._colorIfTerm('')
+    def reset(cls): return cls._color_if_term('')
 
     @classmethod
-    def _coloredText(cls, text, code):
-        return cls._colorIfTerm(code) + text + cls.reset()
+    def _colored_text(cls, text, code):
+        return cls._color_if_term(code) + text + cls.reset()
 
     @classmethod
-    def debug(cls, text): return cls._coloredText(text, '1;30')
+    def debug(cls, text): return cls._colored_text(text, '1;30')
 
     @classmethod
-    def note(cls, text): return cls._coloredText(text, '1')
+    def note(cls, text): return cls._colored_text(text, '1')
 
     @classmethod
-    def warning(cls, text): return cls._coloredText(text, '1;33')
+    def warning(cls, text): return cls._colored_text(text, '1;33')
 
     @classmethod
-    def error(cls, text): return cls._coloredText(text, '1;31')
+    def error(cls, text): return cls._colored_text(text, '1;31')
 
     @classmethod
-    def pos(cls, text): return cls._coloredText(text, '35')
+    def pos(cls, text): return cls._colored_text(text, '35')
 
     @classmethod
-    def quote(cls, text): return cls._coloredText('\'' + text + '\'', '36')
+    def quote(cls, text): return cls._colored_text('\'' + text + '\'', '36')
 
 def debug(*objs):
     if Utils.Flags.debug:

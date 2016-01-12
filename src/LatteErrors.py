@@ -21,7 +21,7 @@ class Status(object):
         return cls._errors
     
     @classmethod
-    def _addMessage(cls, handler, exc):
+    def _add_message(cls, handler, exc):
         """ Store message to be output with handler() after the initial "OK"/"ERROR"
         
         (but print immediately if debug mode is on) """
@@ -41,8 +41,8 @@ class Status(object):
         cls._all_messages = []
 
     @classmethod
-    def addError(cls, exc, fatal=False):
-        cls._addMessage(FP.error, exc)
+    def add_error(cls, exc, fatal=False):
+        cls._add_message(FP.error, exc)
         cls._errors += 1
         if fatal:
             cls.flush()
@@ -50,13 +50,13 @@ class Status(object):
             sys.exit(cls._errors if cls._errors > 0 else 1)
 
     @classmethod
-    def addWarning(cls, exc):
-        cls._addMessage(FP.warning, exc)
+    def add_warning(cls, exc):
+        cls._add_message(FP.warning, exc)
         cls._warnings += 1
 
     @classmethod
-    def addNote(cls, exc):
-        cls._addMessage(FP.note, exc)
+    def add_note(cls, exc):
+        cls._add_message(FP.note, exc)
 
     @classmethod
     def errors(cls):
@@ -67,11 +67,11 @@ class Status(object):
         return cls._warnings
 
     @classmethod
-    def setTokenStream(cls, stream):
+    def set_token_stream(cls, stream):
         cls._tokens = stream
 
     @classmethod
-    def getCurPos(cls, offset=-1):
+    def get_cur_pos(cls, offset=-1):
         """ Try to get the current token's position in source code. """
         if not cls._nodes.LT(offset): return None
         token = cls._nodes.LT(offset).token
@@ -79,13 +79,13 @@ class Status(object):
         return '%d:%d' % (token.line, token.charPositionInLine+1)
 
     @classmethod
-    def getPos(cls, pos):
+    def get_pos(cls, pos):
         """ Get the source code position of a given token. """
         token = cls._tokens.get(pos)
         return '%d:%d' % (token.line, token.charPositionInLine+1)
 
     @classmethod
-    def setNodeStream(cls, stream):
+    def set_node_stream(cls, stream):
         cls._nodes = stream
 
 
@@ -93,11 +93,11 @@ class LatteError(Exception):
     """ Main class for all compiler's errors. """
     def __init__(self, msg, pos=None):
         # apply formatting to `quoted fragments`
-        self.msg = re.sub(r'`([^`]*)`', self._replaceQuote, msg)
+        self.msg = re.sub(r'`([^`]*)`', self._replace_quote, msg)
         self.pos = ('at ' + FP.Colors.pos(pos) + ': ') if pos else ''
 
     @staticmethod
-    def _replaceQuote(matchobj):
+    def _replace_quote(matchobj):
         return FP.Colors.quote(matchobj.group(1))
 
     def __str__(self):

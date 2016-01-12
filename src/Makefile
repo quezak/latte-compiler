@@ -31,8 +31,6 @@ $(PY_TREE): $(G_TREE) $(PY_LATTE)
 $(RUNTIME): $(RUNTIME_C)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# TODO compile all .pys manually?
-
 .PHONY: clean
 clean:
 	rm -f $(PY_LATTE) $(PY_TREE) *.{pyc,pyo,tokens} $(LATC) $(RUNTIME)

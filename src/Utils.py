@@ -60,13 +60,13 @@ class Flags(object):
             (cls.asm_file, _) = splitext(cls.input_file)
             if (cls.asm_file != '-'): cls.asm_file += ".s"
             if cls.asm_file == cls.input_file and cls.asm_file != '-':
-                Status.addError(
+                Status.add_error(
                         LatteError("assembly output cannot be the same file as the source code"),
                         fatal=True)
         if (not cls.bin_file) and cls.asm_file != '-':
             (cls.bin_file, _) = splitext(cls.input_file)
             if cls.bin_file == cls.input_file:
-                Status.addError(
+                Status.add_error(
                         LatteError("output binary cannot be the same file as the source code"),
                         fatal=True)
 

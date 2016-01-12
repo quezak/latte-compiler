@@ -29,17 +29,17 @@ class Symbol(object):
     def __str__(self):
         return LP.tokenNames[self.type].lower()
 
-    def isFunction(self):
+    def is_function(self):
         return False
 
-    def checkWith(self, other, pos):
+    def check_with(self, other, pos):
         """ Check if two symbols have matching type. """
         if not other:
-            debug('checkWith on %s with None' % (str(self)))
+            debug('check_with on %s with None' % (str(self)))
             return # Assuming that None here means an error was already reported.
         # If either type is TYPE_ERROR, it means an error was already reported.
         if (not self == other) and self.type != LP.TYPE_ERROR and other.type != LP.TYPE_ERROR:
-            Status.addError(TypecheckError('expression has type `%s`, expected `%s`' %
+            Status.add_error(TypecheckError('expression has type `%s`, expected `%s`' %
                 (str(other), str(self)), pos))
 
 
@@ -52,7 +52,6 @@ class FunSymbol(Symbol):
         self.ret_type = ret_type
         self.args = args
         self.block = block
-        self.defined = False
 
     def __eq__(self, other):
         """ If the other symbol is also a function, check type and argument types. """
@@ -66,17 +65,11 @@ class FunSymbol(Symbol):
         if result is NotImplemented: return result
         return not result
 
-    def defined(self):
-        return self.defined
-
-    def markDefined(self):
-        self.defined = True
-
     def __str__(self):
         args = ', '.join(map(str, self.args))
         return 'function (' + args + ') -> ' + str(self.ret_type)
     
-    def isFunction(self):
+    def is_function(self):
         return True
     
 
@@ -85,7 +78,7 @@ class FunArg(object):
     def __init__(self, type, name):
         self.type = type
         self.name = name
-        self.pos = Status.getCurPos(-2)
+        self.pos = Status.get_cur_pos(-2)
 
 
 class DeclArg(object):

@@ -33,7 +33,7 @@ def main(argv):
     and textual representation of the tree, function and symbol names. """
     lexer = LatteLexer(ANTLRInputStream(sys.stdin))
     tokens = CommonTokenStream(lexer)
-    Status.setTokenStream(tokens)
+    Status.set_token_stream(tokens)
     parser = LatteParser(tokens)
     prog = parser.prog()
     debug("-----------------------------------------------");
@@ -41,7 +41,7 @@ def main(argv):
     debug("-----------------------------------------------");
     nodes = CommonTreeNodeStream(prog.tree)
     nodes.setTokenStream(tokens)
-    Status.setNodeStream(nodes)
+    Status.set_node_stream(nodes)
     walker = LatteTreeBuilder(nodes)
     root = walker.prog()
     debug("functions: \%d" \% len(root.children))
@@ -60,15 +60,15 @@ def main(argv):
 
 // program -------------------------------------------------
 prog returns [lt=ProgTree()]
-    : ^(PROG (fundef { $lt.addFunTree($fundef.lt); } )* )
+    : ^(PROG (fundef { $lt.add_fun_tree($fundef.lt); } )* )
     ;
 
 fundef returns [lt=FunTree()]
     : ^(FUNDEF
-            type { $lt.setRetType($type.id); }
-            IDENT { $lt.setName($IDENT.text); }
-            (arg { $lt.addArg($arg.fa); })*
-            block { $lt.setBlock($block.lt); }
+            type { $lt.set_ret_type($type.id); }
+            IDENT { $lt.set_name($IDENT.text); }
+            (arg { $lt.add_arg($arg.fa); })*
+            block { $lt.set_block($block.lt); }
        )
     ;
 
@@ -81,7 +81,7 @@ type returns [id]
     ;
 
 block returns [lt=BlockTree()]
-    : ^(BLOCK (stmt { $lt.addStmt($stmt.lt); })* )
+    : ^(BLOCK (stmt { $lt.add_stmt($stmt.lt); })* )
     ;
 
 // statements ----------------------------------------------
@@ -89,40 +89,40 @@ stmt returns [lt=StmtTree()]
     : block
         { $lt = $block.lt; }
     | ^(DECL type { $lt = DeclTree($type.id); }
-            (ditem { $lt.addItem($ditem.item); })+
+            (ditem { $lt.add_item($ditem.item); })+
        )
     | ^(ASSIGN { $lt = StmtTree(ASSIGN); } 
-            IDENT { $lt.addChild(LiteralTree(IDENT, $IDENT.text)); }
-            expr { $lt.addChild($expr.lt); }
+            IDENT { $lt.add_child(LiteralTree(IDENT, $IDENT.text)); }
+            expr { $lt.add_child($expr.lt); }
        )
     | ^(op=(INCR|DECR) IDENT)
         { $lt = StmtTree($op.type, children=[LiteralTree(IDENT, $IDENT.text, pos_off=-2)],
         pos_off=-2); }
     | ^(RETURN { $lt = StmtTree(RETURN); }
-            (expr { $lt.addChild($expr.lt); })?
+            (expr { $lt.add_child($expr.lt); })?
        )
-    | ^(IF { if_pos = Status.getCurPos() } expr
+    | ^(IF { if_pos = Status.get_cur_pos() } expr
         { $lt = StmtTree(IF, children=[$expr.lt], pos=if_pos); }
-            (s=stmt { $lt.addChild($s.lt); })?
-            (ifelse { $lt.addChild($ifelse.lt); })?
+            (s=stmt { $lt.add_child($s.lt); })?
+            (ifelse { $lt.add_child($ifelse.lt); })?
        )
     | ^(WHILE expr
             { $lt = StmtTree(LP.WHILE, children=[$expr.lt]); }
-            (s=stmt { $lt.addChild($s.lt); })?
+            (s=stmt { $lt.add_child($s.lt); })?
        )
     | expr
         { $lt = $expr.lt; }
     ;
 
 ditem returns [item]
-    : ^(DITEM IDENT { id_pos = Status.getCurPos() } )
+    : ^(DITEM IDENT { id_pos = Status.get_cur_pos() } )
         { $item = DeclArg($IDENT.text, id_pos); }
-    | ^(ASSIGN IDENT { id_pos = Status.getCurPos() } expr)
+    | ^(ASSIGN IDENT { id_pos = Status.get_cur_pos() } expr)
         { $item = DeclArg($IDENT.text, id_pos, $expr.lt); }
     ;
 
 ifelse returns [lt=StmtTree()]
-    : ^(ELSE { e_pos = Status.getCurPos() } stmt { $lt = $stmt.lt; })
+    : ^(ELSE { e_pos = Status.get_cur_pos() } stmt { $lt = $stmt.lt; })
         { if $lt.pos == '0:0': $lt.pos = e_pos }
     ;
 
@@ -132,11 +132,11 @@ expr returns [lt=ExprTree]
         { $lt = LiteralTree($lit.type, $lit.text); }
     | ^(op=(NOT|NEG) e=expr)
         { $lt = UnopTree($op.type, $e.lt); }
-    | ^(op=(MULT|DIV|MOD|PLUS|MINUS | LT|LEQ|GT|GEQ|EQ|NEQ | AND|OR) { op_pos = Status.getCurPos() }
+    | ^(op=(MULT|DIV|MOD|PLUS|MINUS | LT|LEQ|GT|GEQ|EQ|NEQ | AND|OR) { op_pos = Status.get_cur_pos() }
            a=expr b=expr
        )
         { $lt = BinopTree($op.type, $a.lt, $b.lt, pos=op_pos); }
     | ^(FUNCALL IDENT { $lt = FuncallTree($IDENT.text); }
-            (e=expr { $lt.addChild($e.lt); } )*
+            (e=expr { $lt.add_child($e.lt); } )*
        )
     ;
