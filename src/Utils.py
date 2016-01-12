@@ -32,8 +32,7 @@ class switch(object):
 
 class Flags(object):
     """ A simple class to hold values of global compiler flags. """
-    # TODO turn off debug by default
-    debug = True
+    debug = False
     input_file = None
     bin_file = None
     asm_file = None
@@ -48,7 +47,9 @@ class Flags(object):
         parser.add_argument("-o", "--output", dest="bin_file", help="custom output executable file")
         parser.add_argument("-s", "--asm_output", dest="asm_file",
                 help="custom output assembly file ('-' for stdout, does not create executable)")
-        parser.add_argument("-d", "--debug", action="store_true", help="print debug messags")
+        parser.add_argument("-d", "--debug", action="store_true", help="""print debug messages
+                and output messages immediately (in particular, omit the requirement for
+                "OK"/"ERROR" to be in the first line)""")
         parser.add_argument("-r", "--runtime", dest="runtime_file", default="runtime.o",
                 help="path to latte runtime library (default runtime.o)")
         parser.add_argument("-C", "--no-color", dest="output_colors", action="store_false",

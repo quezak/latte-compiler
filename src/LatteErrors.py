@@ -5,6 +5,7 @@ import sys
 import re
 
 import FuturePrint as FP
+import Utils
 
 class Status(object):
     """ A class for collecting status messages (errors, warnings and notes). """
@@ -12,30 +13,50 @@ class Status(object):
     _warnings = 0
     _tokens = None
     _nodes = None
+    _all_messages = []
+    _header_output = False
 
     @classmethod
     def errors(cls):
         return cls._errors
+    
+    @classmethod
+    def _addMessage(cls, handler, exc):
+        """ Store message to be output with handler() after the initial "OK"/"ERROR"
+        
+        (but print immediately if debug mode is on) """
+        if not Utils.Flags.debug:
+            cls._all_messages.append((handler, exc))
+        else:
+            handler(str(exc))
+
+    @classmethod
+    def flush(cls):
+        """ Flush the output buffer, adding the required "OK"/"ERROR" on first line. """
+        if not cls._header_output:
+            FP.message("OK" if cls._errors == 0 else "ERROR")
+            cls._header_output = True
+        for handler, exc in cls._all_messages:
+            handler(exc)
+        cls._all_messages = []
 
     @classmethod
     def addError(cls, exc, fatal=False):
-        # TODO with debug off, gather the messages until success or the first error
-        #      (so the 'ERROR' line will be the first on output...)
-        if cls._errors  == 0: FP.message("ERROR") # task requirements
-        FP.error(str(exc))
+        cls._addMessage(FP.error, exc)
         cls._errors += 1
         if fatal:
+            cls.flush()
             FP.message("aborting after a fatal error")
-            sys.exit(1)
+            sys.exit(cls._errors if cls._errors > 0 else 1)
 
     @classmethod
     def addWarning(cls, exc):
-        FP.warning(str(exc))
+        cls._addMessage(FP.warning, exc)
         cls._warnings += 1
 
     @classmethod
     def addNote(cls, exc):
-        FP.note(str(exc))
+        cls._addMessage(FP.note, exc)
 
     @classmethod
     def errors(cls):
