@@ -282,6 +282,7 @@ class StmtTree(LatteTree):
                         if not block_ret:
                             Status.addWarning(TypecheckError(
                                 'infinite loop without guaranteed return', self.pos))
+                            return InfiniteLoopMark(self.pos)
                         return block_ret
                     else: # while(false)
                         self.children[1].warnUnreachableCode(reason=TypecheckError(
@@ -386,8 +387,11 @@ class BlockTree(StmtTree):
             # if a non-last child is a returning statement, warn that further code is unreachable
             if ret_stmt:
                 if i < len(self.children)-1:
-                    self.children[i+1].warnUnreachableCode(reason=TypecheckError(
-                        'function returns here', ret_stmt.pos))
+                    if ret_stmt.type.type == InfiniteLoopMark.type:
+                        err = TypecheckError('infinite loop here', ret_stmt.pos)
+                    else:
+                        err = TypecheckError('function returns here', ret_stmt.pos)
+                    self.children[i+1].warnUnreachableCode(reason=err)
                 return ret_stmt
         return None
 
@@ -622,3 +626,8 @@ class FuncallTree(ExprTree):
         self.checkChildrenTypes()
 
 
+### helper class to mark code after an infinite loop unreachable
+class InfiniteLoopMark(StmtTree):
+    type = 10000;
+    def __init__(self, pos):
+        super(InfiniteLoopMark, self).__init__(type=InfiniteLoopMark.type, pos=pos)
