@@ -358,7 +358,7 @@ class ExprCode(StmtCode):
         self.value_type = tree.value_type
 
     def is_constant(self):
-        # TODO do we need this?
+        # TODO use this in optimization
         return False
 
     def check_unused_result(self):
@@ -578,13 +578,18 @@ class FuncallCode(ExprCode):
 
     def gen_code(self, **kwargs):
         # [1] Compute memory usage for arguments.
-        # TODO do we need to 16-align the stack? probably not, seems to work fine
         argmem = Codes.var_size * len(self.children)
-        # [2] Push arguments in reversed order.
-        # TODO fix this: we can't evaluate the args in reverse order, even though it's convenient
-        #      mayba add a 'result_dest' kwarg to expr codes?
-        for i in reversed(xrange(len(self.children))):
+        # [2] Push arguments.
+        # Arguments need to be pushed in reverse order, but evaluated in normal order -- hence
+        # we first make enough stack space for all of them and move them in the right place after
+        # evaluation.
+        if argmem > 0:
+            self.add_instr(['subl', Codes.const(argmem), Codes.top])
+        for i in xrange(len(self.children)):
             self.add_child_code(i)  # Leaves the value on stack.
+            self.add_instr(Codes.pop_a)
+            # i-th argument should be placed in 4*i(%esp)
+            self.add_instr(['movl', Codes.reg_a, Codes.addr(Codes.top, i * Codes.var_size)])
         # [3] Call and pop arguments.
         self.add_instr(['call', self.fname])
         if argmem > 0:
