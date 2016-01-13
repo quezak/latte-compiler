@@ -285,11 +285,12 @@ class ExprCode(StmtCode):
         return False
 
     def check_unused_result(self):
-        # TODO optimize this out -- just don't push the value before...
+        """ Drop result pushed on stack which wouldn't be used. Both this add and the push itself
+        will be optimized out later. """
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
             self.add_instr(Codes.ADD, lhs=Loc.const(Codes.var_size), rhs=Loc.reg('top'),
-                           comment='unused result')
+                           comment=Codes.S_UNUSED_RESULT)
 
     @staticmethod
     def has_jump_codes(d):

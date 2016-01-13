@@ -1,8 +1,8 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
 
-from Utils import switch
 from LatteErrors import InternalError
+from Utils import switch
 
 
 # code tokens ###################################################################################
@@ -34,6 +34,10 @@ class Codes(object):
     CHILD = 90  # a special instruction saying "insert i-th child code here"
     ASM = 91  # used for all special asm lines like .file, .text, .string, .globl, etc
     EMPTY = 92  # empty output line, just to improve assembly readability
+    DELETED = 93  # assigned by optimizer to deleted actions (because deleting from list is linear)
+
+    # String constants (to avoid typos)
+    S_UNUSED_RESULT = 'unused result'
 
     _CODE_NAMES = {
         0: ['PUSH', 'POP', 'MOV'],

@@ -15,7 +15,8 @@ from LatteErrors import Status, LatteError
 from LatteNodes import *
 from LatteProgram import *
 from Utils import Flags
-from LatteCodes import Codes  # TODO remove
+from LatteCodes import Codes
+from LatteOptimizer import LatteOptimizer
 
 
 class Latc(object):
@@ -82,15 +83,16 @@ class Latc(object):
         cls.codes = [i for i in cls.prog_code.codes()]
         if Status.errors() > 0:
             Status.add_error(LatteError('compilation failed'), fatal=True)
-        debug('---------------- CODES ------------------------')
-        for code in cls.codes:
-            if (code['type'] == Codes.EMPTY):
-                debug('\n', no_hdr=True)
-                continue
-            d = code.copy()
-            del d['type']
-            debug(Codes._code_name(code['type']) + ': ' + str(d), no_hdr=True)
 
+    @classmethod
+    def run_optimizer(cls):
+        """ Run all the optimizations. """
+        debug('-------------- OPTIMIZATIONS ------------------')
+        if not Flags.run_optimizations:
+            debug('(optimizations disabled)')
+            return
+        cls.optimizer = LatteOptimizer(cls.codes)
+        cls.optimizer.run_all()
 
     @classmethod
     def output_assembly(cls):
@@ -126,6 +128,7 @@ def main(argv):
     Latc.build_code_tree()
     Latc.run_typechecks()
     Latc.build_code()
+    Latc.run_optimizer()
     Latc.output_assembly()
     Latc.link_executable()
     Status.flush()

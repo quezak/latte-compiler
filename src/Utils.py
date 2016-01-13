@@ -39,6 +39,7 @@ class Flags(object):
     asm_file = None
     runtime_file = 'runtime.o'
     output_colors = True
+    run_optimizations = True
 
     @classmethod
     def parse_args(cls, argv):
@@ -55,6 +56,8 @@ class Flags(object):
                             help='path to latte runtime library (default runtime.o)')
         parser.add_argument('-C', '--no-color', dest='output_colors', action='store_false',
                             help='disable output coloring')
+        parser.add_argument('-N', '--no-optimizations', dest='run_optimizations',
+                            action='store_false', help='disable optimizations')
         parser.parse_args(namespace=cls)  # Saves values in this class, exits on error.
         # Set output file names, if not provided.
         if not cls.asm_file:
