@@ -49,9 +49,11 @@ class FunSymbol(Symbol):
     def __init__(self, name, ret_type, args, block, pos=None):
         """ `args` is a list of Symbol instances -- function's argument types. """
         super(FunSymbol, self).__init__(name, LP.FUNDEF, pos)
+        self.is_builtin = block is None or name == LP.Builtins.MAIN
         self.ret_type = ret_type
         self.args = args
         self.block = block
+        self.call_counter = 0
 
     def __eq__(self, other):
         """ If the other symbol is also a function, check type and argument types. """

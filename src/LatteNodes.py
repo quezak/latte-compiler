@@ -178,6 +178,11 @@ class ProgTree(LatteTree):
         else:
             Status.add_error(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
         self.check_children_types()
+        # Warn about unused non-builtin functions
+        for sym in self.symbols.values():
+            if sym.is_function() and not sym.is_builtin and sym.call_counter == 0:
+                Status.add_warning(TypecheckError(
+                    'function `%s` defined but never called' % sym.name, sym.pos))
         # Checking the symbols builds symbol tables, so we need to clear them before continuing.
         self._clear_symbols()
 
@@ -618,6 +623,7 @@ class FuncallTree(ExprTree):
             Status.add_error(TypecheckError(
                 'cannot call symbol `%s` of type `%s`' % (self.fname, str(fsym)), self.pos))
             return
+        fsym.call_counter += 1
         # [2] Check the number of arguments.
         self.set_value_type(fsym.ret_type)
         if len(self.children) != len(fsym.args):
