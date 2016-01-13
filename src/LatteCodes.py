@@ -147,7 +147,9 @@ class Codes(object):
                 yield ''
                 return
             if case(cls.DELETED):  # TODO remove this, DELETED codes should be really deleted
-                yield '\t# [deleted]'
+                d = code.copy()
+                del d['type']
+                yield '\t# [deleted] ' + str(sorted(d.items()))
                 return
             if case(cls.CHILD):
                 raise InternalError('code type %s not allowed here', cls._code_name(code['type']))
