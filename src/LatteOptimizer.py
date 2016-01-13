@@ -2,9 +2,11 @@
 # -*- coding: utf8 -*-
 
 from bisect import bisect_left
+from itertools import izip, islice, imap
 
 from FuturePrint import debug
 from LatteCodes import Codes as CC, Loc
+from LatteErrors import Status
 
 
 class LatteOptimizer(object):
@@ -23,15 +25,14 @@ class LatteOptimizer(object):
 
     def run_all(self):
         """ Optimizer main function, which runs the implemented optimizations on the codes. """
-        debug('CODES: ', len(self.codes))
         self.run_opt(self.del_unused_results)
         self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
         self.run_opt(self.del_unused_labels)
+        self.run_opt(self.opt_push_pop)
         # TODO remove push-pop sequences (first only push X pop X, later with renaming destination)
         # TODO free string memory
         # TODO constant propagation
         # self.run_opt(self.clear_deleted_codes)
-        # debug('CODES: ', len(self.codes))
 
     def run_opt(self, function, max_passes=1, **kwargs):
         """ A function to run a single optimization, possibly with many passes in a row.
@@ -55,7 +56,7 @@ class LatteOptimizer(object):
                 continue
             d = code.copy()
             del d['type']
-            debug('[%d]' % i, CC._code_name(code['type']) + '->' + str(d), no_hdr=True)
+            debug('[%d]' % i, CC._code_name(code['type']) + '\t' + CC._str_code(d), no_hdr=True)
 
     def scan_labels(self):
         """ A function that indexes the labels and jumps in the given codes. """
@@ -85,6 +86,7 @@ class LatteOptimizer(object):
             debug('[%d]' % self.labels[label], label, ': ', str(self.jumps.get(label, None)))
 
     def _find_match_by_iterable(self, iterable, attrlist, **kwargs):
+        # TODO maybe rewrite these with some itertools
         """ Find 'next' matching code according to an arbitrary order defined by `iterable`.
 
         attrlist and kwargs specify matching rules as in match(). """
@@ -105,10 +107,14 @@ class LatteOptimizer(object):
         ret = bisect_left(self.jumps.get(label, []), pos) - 1
         return self.jumps[label][ret] if ret >= 0 else None
 
-    def mark_deleted(self, pos):
-        """ Mark code at pos for deletion. """
-        self.codes[pos]['_type'] = CC._code_name(self.codes[pos]['type'])
-        self.codes[pos]['type'] = CC.DELETED
+    def mark_deleted(self, pos_or_iter):
+        """ Mark code for deletion, at a single index or whole iterable. """
+        if isinstance(pos_or_iter, int):
+            self.codes[pos_or_iter]['_type'] = CC._code_name(self.codes[pos_or_iter]['type'])
+            self.codes[pos_or_iter]['type'] = CC.DELETED
+        else:
+            for pos in pos_or_iter:
+                self.mark_deleted(pos)
 
     def del_unused_results(self, **kwargs):
         """ Find the stack pops that are marked as popping an unused result, and delete them along
@@ -179,6 +185,15 @@ class LatteOptimizer(object):
                 debug('deleting unused label', label, 'at', pos)
                 self.mark_deleted(pos)
 
+    def opt_push_pop(self, **kwargs):
+        """ Optimize push-pop sequences. For now only delete [push X, pop X] sequences. """
+        # TODO: also optimize [push X, pop Y] where possible
+        for pos in match_seq(self.codes, [code_spec(type=CC.PUSH), code_spec(type=CC.POP)]):
+            debug('push-pop sequence at', pos)
+            if self.codes[pos]['src'] == self.codes[pos+1]['dest']:
+                debug('   deleting pop-push with same attrs at', pos)
+                self.mark_deleted([pos, pos+1])
+
 
 def match(code, attrlist=[], negate=False, **kwargs):
     """ Return True if given code matches the specification:
@@ -200,3 +215,27 @@ def match(code, attrlist=[], negate=False, **kwargs):
             if key not in code or code[key] != value:
                 return False
     return True
+
+
+def code_spec(attrlist=[], **kwargs):
+    """ Helper function to provide arguments to match_seq() the same way as to match(). """
+    return (attrlist, kwargs)
+
+
+def match_seq(codes, spec_list, start_pos=0, end_pos=None):
+    """ A generator that yields occurences of a sequence of codes matching spec_list (tuples
+    produced with code_spec), starting between start_pos and end_pos.
+
+    Note: this is naive matching -- it's probably not worth writing KMP-like tricks here.
+    After a match the matched codes are skipped, so no returned occurences overlap. """
+    end = min(end_pos or len(codes) - len(spec_list), len(codes) - len(spec_list))
+    skip_to = 0
+    for pos in xrange(start_pos, end):
+        # if we returned a match, skip the matched region
+        if pos < skip_to:
+            continue
+        if all(imap(
+                lambda (code, (attrs, args)): match(code, attrs, **args),
+                izip(islice(codes, pos, pos + len(spec_list)), spec_list))):
+            skip_to = pos + len(spec_list)
+            yield pos

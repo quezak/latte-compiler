@@ -88,6 +88,7 @@ class Codes(object):
             for line in cls._asm_instr(code):
                 yield line
 
+    # TODO refactor 'dest' to 'label' in JUMP, 'name' to 'label' in LABEL, etc
     @classmethod
     def _asm_instr(cls, code):
         """ Generator of assembly instructions from a single intermediate code. """
@@ -117,7 +118,7 @@ class Codes(object):
             if case(cls.ENTER):
                 yield cls._str_asm('pushl', ['%ebp'], code)
                 yield cls._str_asm('movl', ['%esp', '%ebp'], code)
-                var_space = Loc.const((code['var_count'] + 1) * Codes.var_size)
+                var_space = Loc.const((code['var_count'] + 1) * cls.var_size)
                 yield cls._str_asm('subl', [str(var_space), '%esp'], code)
                 return
             if case(cls.LEAVE):
