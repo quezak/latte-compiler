@@ -187,12 +187,16 @@ class LatteOptimizer(object):
 
     def opt_push_pop(self, **kwargs):
         """ Optimize push-pop sequences. For now only delete [push X, pop X] sequences. """
+        result = 0
         # TODO: also optimize [push X, pop Y] where possible
-        for pos in match_seq(self.codes, [code_spec(type=CC.PUSH), code_spec(type=CC.POP)]):
-            debug('push-pop sequence at', pos)
-            if self.codes[pos]['src'] == self.codes[pos+1]['dest']:
-                debug('   deleting pop-push with same attrs at', pos)
-                self.mark_deleted([pos, pos+1])
+        for indexes in match_seq(self.codes, [code_spec(type=CC.PUSH), code_spec(type=CC.POP)]):
+            debug('push-pop sequence:', str(indexes))
+            p_push, p_pop = indexes
+            if self.codes[p_push]['src'] == self.codes[p_pop]['dest']:
+                debug('   deleting pop-push with same attrs at', str(indexes))
+                self.mark_deleted(indexes)
+                result += 1
+        return result
 
 
 def match(code, attrlist=[], negate=False, **kwargs):
@@ -222,20 +226,31 @@ def code_spec(attrlist=[], **kwargs):
     return (attrlist, kwargs)
 
 
+def code_iter(codes, start_pos, end_pos=None):
+    """ Generator that yields all the codes in range that are not marked DELETED. """
+    for pos in xrange(start_pos, end_pos or len(codes)):
+        if not match(codes[pos], type=CC.DELETED):
+            yield pos
+
+
 def match_seq(codes, spec_list, start_pos=0, end_pos=None):
     """ A generator that yields occurences of a sequence of codes matching spec_list (tuples
     produced with code_spec), starting between start_pos and end_pos.
 
     Note: this is naive matching -- it's probably not worth writing KMP-like tricks here.
-    After a match the matched codes are skipped, so no returned occurences overlap. """
+    After a match the matched codes are skipped, so no returned occurences overlap.
+    Yielded value is a list of code indexes matched for the list. """
     end = min(end_pos or len(codes) - len(spec_list), len(codes) - len(spec_list))
     skip_to = 0
     for pos in xrange(start_pos, end):
         # if we returned a match, skip the matched region
         if pos < skip_to:
             continue
-        if all(imap(
-                lambda (code, (attrs, args)): match(code, attrs, **args),
-                izip(islice(codes, pos, pos + len(spec_list)), spec_list))):
-            skip_to = pos + len(spec_list)
-            yield pos
+        # collect enough codes for a possible match
+        indexes = [c for c in islice(code_iter(codes, pos), len(spec_list))]
+        if len(indexes) < len(spec_list):
+            break
+        if all(imap(lambda (idx, (attrs, args)): match(codes[idx], attrs, **args),
+                    izip(indexes, spec_list))):
+            skip_to = indexes[-1] + 1
+            yield indexes
