@@ -96,7 +96,7 @@ class Codes(object):
                 yield cls._str_asm('pushl', [str(code['src'])], code)
                 return
             if case(cls.POP):
-                yield cls._str_asm('popl', [str(Loc.reg(code['reg']))], code)
+                yield cls._str_asm('popl', [str(code['dest'])], code)
                 return
             if case(cls.MOV):
                 yield cls._str_asm('movl', [str(code['src']), str(code['dest'])], code)
@@ -163,7 +163,6 @@ class Codes(object):
             val_str = str(value) if not isinstance(value, str) else value
             res.append(key + ': ' + val_str)
         return ", ".join(res)
-
 
     @classmethod
     def _str_asm(cls, instr, args, code):
@@ -275,4 +274,3 @@ class Loc(object):
         if result is NotImplemented:
             return result
         return not result
-

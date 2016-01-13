@@ -3,7 +3,7 @@
 
 import abc
 import LatteParser as LP
-from LatteCodes import Codes, Loc
+from LatteCodes import Codes as CC, Loc
 from FuturePrint import debug
 from LatteUtils import Symbol
 from LatteErrors import InternalError
@@ -32,11 +32,11 @@ class LatteCode(object):
 
     def add_instr(self, type, **kwargs):
         """ Appends a code. """
-        self.instr.append(Codes.mkcode(type, **kwargs))
+        self.instr.append(CC.mkcode(type, **kwargs))
 
     def add_asm_instr(self, parts):
         """ Appends a ASM type instruction (special assembly directives). """
-        self.add_instr(Codes.ASM, parts=parts)
+        self.add_instr(CC.ASM, parts=parts)
 
     @abc.abstractmethod
     def gen_code(self, **kwargs):
@@ -46,7 +46,7 @@ class LatteCode(object):
     def add_child_code(self, child, **kwargs):
         """ Generates code for the given child and inserts it in the node's code. """
         child.gen_code(**kwargs)
-        self.add_instr(Codes.CHILD, child=child)
+        self.add_instr(CC.CHILD, child=child)
 
     def add_child_by_idx(self, idx, **kwargs):
         self.add_child_code(self.children[idx], **kwargs)
@@ -54,7 +54,7 @@ class LatteCode(object):
     def codes(self):
         """ A generator that yields the intermediate codes. """
         for instr in self.instr:
-            if Codes.is_child(instr):
+            if CC.is_child(instr):
                 for child_instr in instr['child'].codes():
                     yield child_instr
             else:
@@ -84,17 +84,17 @@ class ProgCode(LatteCode):
         # source file info
         if not Flags.input_from_stdin():
             self.add_asm_instr(['.file', '"%s"' % Flags.input_file])
-        self.add_instr(Codes.EMPTY)
+        self.add_instr(CC.EMPTY)
         # program code
         self.add_asm_instr(['.text'])
         for child in self.children:
-            self.add_instr(Codes.EMPTY)
+            self.add_instr(CC.EMPTY)
             self.add_child_code(child)
         # string constants (after children, so their labels are allocated)
-        self.add_instr(Codes.EMPTY)
+        self.add_instr(CC.EMPTY)
         self.add_asm_instr(['.section', '.rodata'])
-        for string, label in Codes._strings.iteritems():
-            self.add_instr(Codes.LABEL, name=label)
+        for string, label in CC._strings.iteritems():
+            self.add_instr(CC.LABEL, name=label)
             self.add_asm_instr(['.string', string])
 
 
@@ -106,7 +106,7 @@ class FunCode(LatteCode):
         self.name = tree.name
         self.args = tree.args
         self.add_child(BlockCode(tree.children[0]))
-        self.ret_label = Codes.new_label()
+        self.ret_label = CC.new_label()
         for i in xrange(len(self.args)):
             arg = self.args[i]
             self.tree.add_symbol(Symbol(arg.name, arg.type, Loc.arg_addr(i)))
@@ -125,14 +125,14 @@ class FunCode(LatteCode):
     def gen_code(self, **kwargs):
         self.add_asm_instr(['.globl', self.name])
         self.add_asm_instr(['.type', self.name, '@function'])
-        self.add_instr(Codes.LABEL, name=self.name)
+        self.add_instr(CC.LABEL, name=self.name)
         # prologue
-        self.add_instr(Codes.ENTER, var_count=self.var_count)
+        self.add_instr(CC.ENTER, var_count=self.var_count)
         # insert block
         self.add_child_by_idx(0)
         # epilogue
-        self.add_instr(Codes.LABEL, name=self.ret_label)
-        self.add_instr(Codes.LEAVE)
+        self.add_instr(CC.LABEL, name=self.ret_label)
+        self.add_instr(CC.LEAVE)
 
 
 # statement #####################################################################################
@@ -148,15 +148,15 @@ class StmtCode(LatteCode):
                 self.add_child(StmtFactory(child))
         for case in switch(self.type.type):
             if case(LP.IF):
-                self.label_after = Codes.new_label()
+                self.label_after = CC.new_label()
                 # if there are less blocks, just evaluate condition and jump to label_after
-                self.label_then = Codes.new_label() if len(self.children) > 1 else self.label_after
-                self.label_else = Codes.new_label() if len(self.children) > 2 else self.label_after
+                self.label_then = CC.new_label() if len(self.children) > 1 else self.label_after
+                self.label_else = CC.new_label() if len(self.children) > 2 else self.label_after
                 break
             if case(LP.WHILE):
-                self.label_after = Codes.new_label()
-                self.label_cond = Codes.new_label()
-                self.label_block = Codes.new_label() if len(self.children) > 1 else self.label_cond
+                self.label_after = CC.new_label()
+                self.label_cond = CC.new_label()
+                self.label_block = CC.new_label() if len(self.children) > 1 else self.label_cond
                 break
 
     def gen_code(self, **kwargs):
@@ -165,42 +165,42 @@ class StmtCode(LatteCode):
                 if self.children:
                     # Evaluate the expression and pop the result to eax for returning.
                     self.add_child_by_idx(0)
-                    self.add_instr(Codes.POP, reg='a')
+                    self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # Jump to the return section
-                self.add_instr(Codes.JUMP, dest=self.get_cur_fun().ret_label)
+                self.add_instr(CC.JUMP, dest=self.get_cur_fun().ret_label)
                 break
             if case(LP.IF):
                 # children: cond, (then-block)?, (else-block)?
                 self.add_child_by_idx(0, on_true=self.label_then, on_false=self.label_else)
                 if len(self.children) > 1:  # there is a then-block
-                    self.add_instr(Codes.LABEL, name=self.label_then)
+                    self.add_instr(CC.LABEL, name=self.label_then)
                     self.add_child_by_idx(1)
                 if len(self.children) > 2:  # there is an else-block
-                    self.add_instr(Codes.JUMP, dest=self.label_after)  # jump out of then-block
-                    self.add_instr(Codes.LABEL, name=self.label_else)
+                    self.add_instr(CC.JUMP, dest=self.label_after)  # jump out of then-block
+                    self.add_instr(CC.LABEL, name=self.label_else)
                     self.add_child_by_idx(2)
-                self.add_instr(Codes.LABEL, name=self.label_after)
+                self.add_instr(CC.LABEL, name=self.label_after)
                 break
             if case(LP.WHILE):
                 # children: cond, (block)?
                 if len(self.children) > 1:  # there is a loop block
-                    self.add_instr(Codes.JUMP, dest=self.label_cond)
-                    self.add_instr(Codes.LABEL, name=self.label_block)
+                    self.add_instr(CC.JUMP, dest=self.label_cond)
+                    self.add_instr(CC.LABEL, name=self.label_block)
                     self.add_child_by_idx(1)
-                self.add_instr(Codes.LABEL, name=self.label_cond)
+                self.add_instr(CC.LABEL, name=self.label_cond)
                 self.add_child_by_idx(0, on_true=self.label_block, on_false=self.label_after)
-                self.add_instr(Codes.LABEL, name=self.label_after)
+                self.add_instr(CC.LABEL, name=self.label_after)
                 break
             if case(LP.ASSIGN):
                 # compute assigned value on stack
                 self.add_child_by_idx(1)
-                self.add_instr(Codes.POP, reg='a')
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # put the value into destination address
                 dest_addr = self.tree.symbol(self.children[0].value).pos
-                self.add_instr(Codes.MOV, src=Loc.reg('a'), dest=Loc.mem(dest_addr))
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.mem(dest_addr))
                 break
             if case(LP.INCR, LP.DECR):
-                op = Codes.ADD if self.type.type == LP.INCR else Codes.SUB
+                op = CC.ADD if self.type.type == LP.INCR else CC.SUB
                 addr = self.tree.symbol(self.children[0].value).pos
                 self.add_instr(op, lhs=Loc.const(1), rhs=Loc.mem(addr))
                 break
@@ -269,8 +269,8 @@ class DeclCode(StmtCode):
             addr = Loc.var_addr(fun.next_var_num())
             if item.expr:
                 self.add_child_by_idx(item.expr_child_idx)
-                self.add_instr(Codes.POP, reg='a')
-                self.add_instr(Codes.MOV, src=Loc.reg('a'), dest=Loc.mem(addr))
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.mem(addr))
             # Important: we add symbol containing the new var's address *after* assigned expression
             # is evaluated (because of e.g. int i = i+7); but still inside the loop -- so next
             # declarations use the new symbol.
@@ -293,8 +293,8 @@ class ExprCode(StmtCode):
         will be optimized out later. """
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
-            self.add_instr(Codes.ADD, lhs=Loc.const(Codes.var_size), rhs=Loc.reg('top'),
-                           comment=Codes.S_UNUSED_RESULT)
+            self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'),
+                           comment=CC.S_UNUSED_RESULT)
 
     @staticmethod
     def has_jump_codes(d):
@@ -322,15 +322,15 @@ class LiteralCode(ExprCode):
             for case in switch(self.type.type):
                 if case(LP.BOOLEAN):
                     label = {0: kwargs['on_false'], 1: kwargs['on_true']}[self.value]
-                    self.add_instr(Codes.JUMP, dest=label)
+                    self.add_instr(CC.JUMP, dest=label)
                     break
                 if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
-                    self.add_instr(Codes.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
+                    self.add_instr(CC.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
                                    dest=Loc.reg('a'))
                     # note: comparing with 0, so on equality jump to false!
-                    self.add_instr(Codes.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
+                    self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
                                    op='je', dest=kwargs['on_false'])
-                    self.add_instr(Codes.JUMP, dest=kwargs['on_true'])
+                    self.add_instr(CC.JUMP, dest=kwargs['on_true'])
                     break
                 if case():
                     raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
@@ -338,15 +338,15 @@ class LiteralCode(ExprCode):
             return
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
-                self.add_instr(Codes.PUSH, src=Loc.const(self.value))
+                self.add_instr(CC.PUSH, src=Loc.const(self.value))
                 break
             if case(LP.IDENT):
-                self.add_instr(Codes.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
+                self.add_instr(CC.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
                                dest=Loc.reg('a'))
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.STRING):
-                self.add_instr(Codes.PUSH, src=Loc.stringlit(self))
+                self.add_instr(CC.PUSH, src=Loc.stringlit(self))
         self.check_unused_result()
 
     def is_constant(self):
@@ -363,9 +363,9 @@ class UnopCode(ExprCode):
         for case in switch(self.type.type):
             if case(LP.NEG):  # integer negation
                 self.add_child_by_idx(0)
-                self.add_instr(Codes.POP, reg='a')
-                self.add_instr(Codes.NEG, dest=Loc.reg('a'))
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                self.add_instr(CC.NEG, dest=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.NOT):  # logical not
                 if self.has_jump_codes(kwargs):
@@ -375,10 +375,10 @@ class UnopCode(ExprCode):
                     return
                 # otherwise -- evaluate the boolean value: arg == false (0)
                 self.add_child_by_idx(0)
-                self.add_instr(Codes.POP, reg='a')
-                self.add_instr(Codes.BOOL_OP, lhs=Loc.const(0), rhs=Loc.reg('a'),
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                self.add_instr(CC.BOOL_OP, lhs=Loc.const(0), rhs=Loc.reg('a'),
                                op='sete', dest=Loc.reg('a'))
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case():
                 raise InternalError('wrong unop value type')
@@ -416,19 +416,19 @@ class BinopCode(ExprCode):
         self.add_child_by_idx(1)
         for case in switch(self.type.type):
             if case(LP.PLUS, LP.MINUS, LP.MULT):
-                op = {LP.PLUS: Codes.ADD, LP.MINUS: Codes.SUB, LP.MULT: Codes.MUL}[self.type.type]
-                self.add_instr(Codes.POP, reg='d')
-                self.add_instr(Codes.POP, reg='a')
+                op = {LP.PLUS: CC.ADD, LP.MINUS: CC.SUB, LP.MULT: CC.MUL}[self.type.type]
+                self.add_instr(CC.POP, dest=Loc.reg('d'))
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
                 self.add_instr(op, lhs=Loc.reg('d'), rhs=Loc.reg('a'))
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.DIV, LP.MOD):
-                self.add_instr(Codes.POP, reg='c')
-                self.add_instr(Codes.POP, reg='a')
-                self.add_instr(Codes.DIV, lhs=Loc.reg('c'))
+                self.add_instr(CC.POP, dest=Loc.reg('c'))
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                self.add_instr(CC.DIV, lhs=Loc.reg('c'))
                 # quotient in eax, remainder in edx
                 result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type]
-                self.add_instr(Codes.PUSH, src=result)
+                self.add_instr(CC.PUSH, src=result)
                 break
             if case():
                 raise InternalError('wrong int op type %s' % str(self.type))
@@ -436,8 +436,8 @@ class BinopCode(ExprCode):
     def _gen_code_relop(self, **kwargs):
         self.add_child_by_idx(0)
         self.add_child_by_idx(1)
-        self.add_instr(Codes.POP, reg='d')
-        self.add_instr(Codes.POP, reg='a')
+        self.add_instr(CC.POP, dest=Loc.reg('d'))
+        self.add_instr(CC.POP, dest=Loc.reg('a'))
         try:
             if self.has_jump_codes(kwargs):
                 # part of condition evaluation -- select the conditional jump instruction
@@ -445,45 +445,45 @@ class BinopCode(ExprCode):
                 self.label_false = kwargs['on_false']
                 jmp_code = {LP.EQ: 'je', LP.NEQ: 'jne', LP.GT: 'jg', LP.GEQ: 'jge',
                             LP.LT: 'jl', LP.LEQ: 'jle', }[self.type.type]
-                self.add_instr(Codes.IF_JUMP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
+                self.add_instr(CC.IF_JUMP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=jmp_code, dest=self.label_true)
-                self.add_instr(Codes.JUMP, dest=self.label_false)
+                self.add_instr(CC.JUMP, dest=self.label_false)
             else:
                 # expression returning bool -- select the comparision set instruction
                 set_code = {LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
                             LP.LT: 'setl', LP.LEQ: 'setle', }[self.type.type]
-                self.add_instr(Codes.BOOL_OP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
+                self.add_instr(CC.BOOL_OP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=set_code, dest=Loc.reg('a'))
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
         except KeyError:
             raise InternalError('wrong rel op type %s' % str(self.type))
 
     def _gen_code_boolop(self, **kwargs):
-        self.label_true = kwargs.get('on_true', Codes.new_label())
-        self.label_false = kwargs.get('on_false', Codes.new_label())
-        self.label_right = Codes.new_label()  # additional label to jump to the right operand
+        self.label_true = kwargs.get('on_true', CC.new_label())
+        self.label_false = kwargs.get('on_false', CC.new_label())
+        self.label_right = CC.new_label()  # additional label to jump to the right operand
         for case in switch(self.type.type):
             if case(LP.AND):
                 self.add_child_by_idx(0, on_true=self.label_right, on_false=self.label_false)
-                self.add_instr(Codes.LABEL, name=self.label_right)
+                self.add_instr(CC.LABEL, name=self.label_right)
                 self.add_child_by_idx(1, on_true=self.label_true, on_false=self.label_false)
                 break
             if case(LP.OR):
                 self.add_child_by_idx(0, on_true=self.label_true, on_false=self.label_right)
-                self.add_instr(Codes.LABEL, name=self.label_right)
+                self.add_instr(CC.LABEL, name=self.label_right)
                 self.add_child_by_idx(1, on_true=self.label_true, on_false=self.label_false)
                 break
             if case():
                 raise InternalError('wrong bool op type %s' % str(self.type))
         # if no jump keywords were given, the result will be used as a value -- push it
         if not self.has_jump_codes(kwargs):
-            self.label_after = Codes.new_label()
-            self.add_instr(Codes.LABEL, name=self.label_true)
-            self.add_instr(Codes.PUSH, src=Loc.const(1))
-            self.add_instr(Codes.JUMP, dest=self.label_after)
-            self.add_instr(Codes.LABEL, name=self.label_false)
-            self.add_instr(Codes.PUSH, src=Loc.const(0))
-            self.add_instr(Codes.LABEL, name=self.label_after)
+            self.label_after = CC.new_label()
+            self.add_instr(CC.LABEL, name=self.label_true)
+            self.add_instr(CC.PUSH, src=Loc.const(1))
+            self.add_instr(CC.JUMP, dest=self.label_after)
+            self.add_instr(CC.LABEL, name=self.label_false)
+            self.add_instr(CC.PUSH, src=Loc.const(0))
+            self.add_instr(CC.LABEL, name=self.label_after)
 
     def _gen_code_stringop(self):
         if self.type.type != LP.PLUS:
@@ -492,9 +492,9 @@ class BinopCode(ExprCode):
         # add children in reversed order, so they are on stack ready to call the concat lib function
         self.add_child_by_idx(1)
         self.add_child_by_idx(0)
-        self.add_instr(Codes.CALL, name=Codes.strcat_function)
-        self.add_instr(Codes.ADD, lhs=Loc.const(2 * Codes.var_size), rhs=Loc.reg('top'))
-        self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+        self.add_instr(CC.CALL, name=CC.strcat_function)
+        self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
+        self.add_instr(CC.PUSH, src=Loc.reg('a'))
         # TODO free memory later
 
 
@@ -509,25 +509,25 @@ class FuncallCode(ExprCode):
 
     def gen_code(self, **kwargs):
         # [1] Compute memory usage for arguments.
-        argmem = Codes.var_size * len(self.children)
+        argmem = CC.var_size * len(self.children)
         # [2] Push arguments.
         # Arguments need to be pushed in reverse order, but evaluated in normal order -- hence
         # we first make enough stack space for all of them and move them in the right place after
         # evaluation.
         if len(self.children) > 1:
-            self.add_instr(Codes.SUB, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
+            self.add_instr(CC.SUB, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
             for i in xrange(len(self.children)):
                 self.add_child_by_idx(i)  # Leaves the value on stack.
-                self.add_instr(Codes.POP, reg='a')
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # i-th argument should be placed in 4*i(%esp)
-                self.add_instr(Codes.MOV, src=Loc.reg('a'),
-                               dest=Loc.mem(Loc.top, i * Codes.var_size))
+                self.add_instr(CC.MOV, src=Loc.reg('a'),
+                               dest=Loc.mem(Loc.top, i * CC.var_size))
         elif len(self.children) > 0:
             self.add_child_by_idx(0)  # With only one argument we can just push it on stack.
         # [3] Call and pop arguments.
-        self.add_instr(Codes.CALL, name=self.fname)
+        self.add_instr(CC.CALL, name=self.fname)
         if argmem > 0:
-            self.add_instr(Codes.ADD, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
+            self.add_instr(CC.ADD, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
         # [4] finish depending on how we were called:
         if self.has_jump_codes(kwargs):
             if self.fsym.ret_type.type != LP.BOOLEAN:
@@ -535,13 +535,13 @@ class FuncallCode(ExprCode):
                     self.fname, str(self.fsym), self.tree.pos))
             # [4a] bool function as part of condition evaluation -- jump basing on the result
             # note: comparing with 0, so on equality jump to false!
-            self.add_instr(Codes.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
+            self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
                            op='je', dest=kwargs['on_false'])
-            self.add_instr(Codes.JUMP, dest=kwargs['on_true'])
+            self.add_instr(CC.JUMP, dest=kwargs['on_true'])
         else:
             # [4b] normal expression -- push the return value on stack if needed
             if self.fsym.ret_type.type != LP.VOID:
-                self.add_instr(Codes.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
             self.check_unused_result()
 
 
