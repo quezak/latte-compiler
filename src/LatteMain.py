@@ -49,24 +49,24 @@ class Latc(object):
         cls.parsed_prog = cls.parser.prog()
         if Status.errors() > 0:
             Status.add_error(LatteError('parsing failed'), fatal=True)
-        debug('-----------------------------------------------')
+        debug('----------------- AST -------------------------')
         debug('Tree: ', cls.parsed_prog.tree.toStringTree())
-        debug('-----------------------------------------------')
 
     @classmethod
     def build_code_tree(cls):
         """ Build the tree from code AST. """
+        debug('-------------- BUILD TREE ---------------------')
         cls.nodes = CommonTreeNodeStream(cls.parsed_prog.tree)
         cls.nodes.setTokenStream(cls.tokens)
         Status.set_node_stream(cls.nodes)
         cls.builder = LatteTreeBuilder(cls.nodes)
         cls.prog_tree = cls.builder.prog()
-        debug('-----------------------------------------------')
+        debug('---------------- TREE -------------------------')
         cls.prog_tree.print_tree()
-        debug('-----------------------------------------------')
 
     @classmethod
     def run_typechecks(cls):
+        debug('--------------- TYPECHECK ---------------------')
         """ Run type and return checks. """
         cls.prog_tree.check_types()
         if Status.errors() > 0:
@@ -75,27 +75,31 @@ class Latc(object):
     @classmethod
     def build_code(cls):
         """ Generate intermediate code from the tree. """
-        debug('-----------------------------------------------')
+        debug('------------- BUILD CODE TREE -----------------')
         cls.prog_code = ProgCode(cls.prog_tree)
         cls.prog_code.gen_code()
-        debug('-----------------------------------------------')
+        debug('--------------- GEN CODES ---------------------')
         cls.codes = [i for i in cls.prog_code.codes()]
         if Status.errors() > 0:
             Status.add_error(LatteError('compilation failed'), fatal=True)
+        debug('---------------- CODES ------------------------')
+        for code in cls.codes:
+            if (code['type'] == Codes.EMPTY):
+                debug('\n', no_hdr=True)
+                continue
+            d = code.copy()
+            del d['type']
+            debug(Codes._code_name(code['type']) + ': ' + str(d), no_hdr=True)
+
 
     @classmethod
     def output_assembly(cls):
         """ Output the assembly code. """
-        debug('-----------------------------------------------')
+        debug('-------------- ASM OUTPUT ---------------------')
         try:
             asm_file = sys.stdout if Flags.output_to_stdout() else open(Flags.asm_file, 'w')
-            for instr in cls.codes:
-                if (instr['type'] == Codes.EMPTY):
-                    print('\n\n', file=asm_file)
-                    continue
-                t = Codes._code_name(instr['type'])
-                del instr['type']
-                print(t + ': ' + str(instr), file=asm_file)
+            for instr in Codes.gen_asm(cls.codes):
+                print(str(instr), file=asm_file)
             if not Flags.output_to_stdout():
                 asm_file.close()
         except IOError as err:
@@ -123,7 +127,7 @@ def main(argv):
     Latc.run_typechecks()
     Latc.build_code()
     Latc.output_assembly()
-    #Latc.link_executable()
+    Latc.link_executable()
     Status.flush()
     sys.exit(Status.errors())
 

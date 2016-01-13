@@ -48,9 +48,12 @@ class Colors(object):
         return cls._colored_text('\'' + text + '\'', '36')
 
 
-def debug(*objs):
+def debug(*objs, **kwargs):
     if Utils.Flags.debug:
-        print(Colors.debug('[dbg]'), *objs, file=sys.stderr)
+        if kwargs.get('no_hdr', False):
+            print(*objs, file=sys.stderr)
+        else:
+            print(Colors.debug('[dbg]'), *objs, file=sys.stderr)
 
 
 def message(*objs):

@@ -420,7 +420,7 @@ class BinopCode(ExprCode):
             if case(LP.DIV, LP.MOD):
                 self.add_instr(Codes.POP, reg='c')
                 self.add_instr(Codes.POP, reg='a')
-                self.add_instr(Codes.DIV, lhs=Loc.reg('c'), rhs=Loc.reg('a'))
+                self.add_instr(Codes.DIV, lhs=Loc.reg('c'))
                 # quotient in eax, remainder in edx
                 result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type]
                 self.add_instr(Codes.PUSH, src=result)
@@ -442,7 +442,7 @@ class BinopCode(ExprCode):
                             LP.LT: 'jl', LP.LEQ: 'jle', }[self.type.type]
                 self.add_instr(Codes.IF_JUMP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=jmp_code, dest=self.label_true)
-                self.add_instr(Codes.jump, dest=self.label_false)
+                self.add_instr(Codes.JUMP, dest=self.label_false)
             else:
                 # expression returning bool -- select the comparision set instruction
                 set_code = {LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
@@ -477,7 +477,7 @@ class BinopCode(ExprCode):
             self.add_instr(Codes.PUSH, src=Loc.const(1))
             self.add_instr(Codes.JUMP, dest=self.label_after)
             self.add_instr(Codes.LABEL, name=self.label_false)
-            self.add_instr(Codes.PUSH, Loc.const(0))
+            self.add_instr(Codes.PUSH, src=Loc.const(0))
             self.add_instr(Codes.LABEL, name=self.label_after)
 
     def _gen_code_stringop(self):
