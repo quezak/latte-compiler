@@ -275,3 +275,6 @@ class Loc(object):
         if result is NotImplemented:
             return result
         return not result
+
+    def is_constant(self):
+        return self.type == self.CONST or self.type == self.STRINGLIT

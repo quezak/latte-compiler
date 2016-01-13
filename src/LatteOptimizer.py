@@ -28,8 +28,7 @@ class LatteOptimizer(object):
         self.run_opt(self.del_unused_results)
         self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
         self.run_opt(self.del_unused_labels)
-        self.run_opt(self.opt_push_pop)
-        # TODO remove push-pop sequences (first only push X pop X, later with renaming destination)
+        self.run_opt(self.opt_push_pop, max_passes=self.INF_PASSES)
         # TODO free string memory
         # TODO constant propagation
         # self.run_opt(self.clear_deleted_codes)
@@ -107,10 +106,11 @@ class LatteOptimizer(object):
         ret = bisect_left(self.jumps.get(label, []), pos) - 1
         return self.jumps[label][ret] if ret >= 0 else None
 
-    def mark_deleted(self, pos_or_iter):
+    def mark_deleted(self, pos_or_iter, **kwargs):
         """ Mark code for deletion, at a single index or whole iterable. """
         if isinstance(pos_or_iter, int):
             self.codes[pos_or_iter]['_type'] = CC._code_name(self.codes[pos_or_iter]['type'])
+            self.codes[pos_or_iter].update(kwargs)  # just for debugging, to put more indicators
             self.codes[pos_or_iter]['type'] = CC.DELETED
         else:
             for pos in pos_or_iter:
@@ -186,15 +186,25 @@ class LatteOptimizer(object):
                 self.mark_deleted(pos)
 
     def opt_push_pop(self, **kwargs):
-        """ Optimize push-pop sequences. For now only delete [push X, pop X] sequences. """
+        """ Optimize push-pop sequences. Detailed cases:
+
+        * delete sequences [push X, pop X]
+        * combine [push X, pop Y] into [mov X Y] -- the pop destination is always a register """
         result = 0
-        # TODO: also optimize [push X, pop Y] where possible
+        # TODO it might be nice to also detect e.g. [push, mov, pop] if mov's args are unrelated
         for indexes in match_seq(self.codes, [code_spec(type=CC.PUSH), code_spec(type=CC.POP)]):
             debug('push-pop sequence:', str(indexes))
             p_push, p_pop = indexes
-            if self.codes[p_push]['src'] == self.codes[p_pop]['dest']:
-                debug('   deleting pop-push with same attrs at', str(indexes))
+            src, dest = self.codes[p_push]['src'], self.codes[p_pop]['dest']
+            if src == dest:
+                debug('   deleting push-pop with same attrs at', str(indexes))
                 self.mark_deleted(indexes)
+                result += 1
+            else:
+                debug('   combining [push, pop] to mov at', str(indexes))
+                self.mark_deleted(p_push, _type='[push,pop]', dest=dest)
+                self.codes[p_pop] = CC.mkcode(CC.MOV, src=src, dest=dest,
+                                              comment='combined from [push,pop]')
                 result += 1
         return result
 
