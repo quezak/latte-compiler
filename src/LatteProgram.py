@@ -266,11 +266,14 @@ class DeclCode(StmtCode):
         # For each declared item, compute its address on stack (and assign the value if needed).
         for item in self.items:
             addr = Loc.var_addr(fun.next_var_num())
-            block.tree.add_symbol(Symbol(item.name, self.decl_type.type, addr))
             if item.expr:
                 self.add_child_by_idx(item.expr_child_idx)
                 self.add_instr(Codes.POP, reg='a')
                 self.add_instr(Codes.MOV, src=Loc.reg('a'), dest=Loc.mem(addr))
+            # Important: we add symbol containing the new var's address *after* assigned expression
+            # is evaluated (because of e.g. int i = i+7); but still inside the loop -- so next
+            # declarations use the new symbol.
+            block.tree.add_symbol(Symbol(item.name, self.decl_type.type, addr))
 
 
 # expression ####################################################################################
