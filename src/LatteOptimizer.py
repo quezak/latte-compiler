@@ -13,9 +13,12 @@ from Utils import Flags
 class LatteOptimizer(object):
 
     INF_PASSES = 100  # number of passes considered 'sufficiently infinite'
-    # codes that 'don't do anything', e.g. if there are no other codes between a jump and its
+    # Codes that 'don't do anything', e.g. if there are no other codes between a jump and its
     # label, the jump can be safely deleted.
     NOOPS = (CC.LABEL, CC.EMPTY, CC.DELETED)
+    # Codes that do an operation but no flow control or stack operations, so in [push, <op>, pop]
+    # push and pop can be combined into mov if the operation's arguments are unrelated.
+    NO_STACK_OPS = (CC.MOV, CC.ADD, CC.SUB, CC.MUL, CC.NEG)
 
     def __init__(self, codes):
         self.codes = codes
@@ -30,7 +33,7 @@ class LatteOptimizer(object):
         self.run_opt(self.del_unused_results)
         self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
         self.run_opt(self.del_unused_labels)
-        self.run_opt(self.opt_push_pop, max_passes=self.INF_PASSES)
+        self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
         # TODO free string memory
         # TODO constant propagation
         self.run_opt(self.clear_deleted_codes)
@@ -158,7 +161,7 @@ class LatteOptimizer(object):
                     result += 1
                 else:
                     debug('   code at', pos+push_off, 'is not a push, ignoring')
-        return 0
+        return result
 
     def clear_deleted_codes(self, **kwargs):
         """ Really delete the codes marked DELETED. """
@@ -200,28 +203,42 @@ class LatteOptimizer(object):
                 result += 1
         return result
 
-    def opt_push_pop(self, **kwargs):
+    def reduce_push_pop(self, **kwargs):
         """ Optimize push-pop sequences. Detailed cases:
 
         * delete sequences [push X, pop X]
         * combine [push X, pop Y] into [mov X Y] -- the pop destination is always a register """
         result = 0
-        # TODO it might be nice to also detect e.g. [push, mov, pop] if mov's args are unrelated
         for indexes in match_seq(self.codes, [code_spec(type=CC.PUSH), code_spec(type=CC.POP)]):
             debug('push-pop sequence:', str(indexes))
-            p_push, p_pop = indexes
+            result += self._do_push_pop_reduction(indexes)
+        for indexes in match_seq(self.codes, [code_spec(type=CC.PUSH),
+                                              code_spec(type=self.NO_STACK_OPS),
+                                              code_spec(type=CC.POP)]):
+            debug('push-op-pop sequence:', str(indexes))
+            p_push, p_op, p_pop = indexes
             src, dest = self.codes[p_push]['src'], self.codes[p_pop]['dest']
-            if src == dest:
-                debug('   deleting push-pop with same attrs at', str(indexes))
-                self.mark_deleted(indexes)
-                result += 1
-            else:
-                debug('   combining [push, pop] to mov at', str(indexes))
-                self.mark_deleted(p_push, _type='[push,pop]', dest=dest)
-                self.codes[p_pop] = CC.mkcode(CC.MOV, src=src, dest=dest,
-                                              comment='combined from [push,pop]')
-                result += 1
+            # do the reduction only if op's arguments do nothing to src and dest locations
+            if src not in self.codes[p_op].values() and dest not in self.codes[p_op].values():
+                result += self._do_push_pop_reduction([p_push, p_pop])
         return result
+
+    def _do_push_pop_reduction(self, indexes):
+        """ Child function of reduce_push_pop, that does the actual reduction. Separate function just
+        because for code reuse. `indexes` should be a two-element position list."""
+        p_push, p_pop = indexes
+        src, dest = self.codes[p_push]['src'], self.codes[p_pop]['dest']
+        if src == dest:
+            debug('   deleting push-pop with same attrs at', str(indexes))
+            self.mark_deleted(indexes)
+            return 1
+        else:
+            debug('   combining [push, pop] to mov at', str(indexes))
+            self.mark_deleted(p_push, _type='[push,pop]', dest=dest)
+            self.codes[p_pop] = CC.mkcode(CC.MOV, src=src, dest=dest,
+                                          comment='combined from [push,pop]')
+            return 1
+        return 0
 
 
 def match(code, attrlist=[], negate=False, **kwargs):
