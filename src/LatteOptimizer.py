@@ -6,7 +6,8 @@ from itertools import izip, islice, imap
 
 from FuturePrint import debug
 from LatteCodes import Codes as CC, Loc
-from LatteErrors import Status
+from LatteErrors import Status, LatteError
+from Utils import Flags
 
 
 class LatteOptimizer(object):
@@ -22,6 +23,7 @@ class LatteOptimizer(object):
         self.jumps = {}  # Map from label name to positions which jump to it.
         self.print_codes()
         self.scan_labels()
+        self.opt_counters = {}
 
     def run_all(self):
         """ Optimizer main function, which runs the implemented optimizations on the codes. """
@@ -31,7 +33,11 @@ class LatteOptimizer(object):
         self.run_opt(self.opt_push_pop, max_passes=self.INF_PASSES)
         # TODO free string memory
         # TODO constant propagation
-        # self.run_opt(self.clear_deleted_codes)
+        self.run_opt(self.clear_deleted_codes)
+        if Flags.optimizer_summary:
+            Status.add_note(LatteError('optimizer case counters:'))
+            for name, count in self.opt_counters.iteritems():
+                Status.add_note(LatteError(name + ': ' + str(count)))
 
     def run_opt(self, function, max_passes=1, **kwargs):
         """ A function to run a single optimization, possibly with many passes in a row.
@@ -40,9 +46,12 @@ class LatteOptimizer(object):
         than max_passes times.
         Other keyword arguments are passed to the optimization function. """
         for count in xrange(max_passes):
-            debug('--- OPT:', function.__name__, 'pass %d (of max %d)' % (count, max_passes))
+            name = function.__name__
+            debug('--- OPT:', name, 'pass %d (of max %d)' % (count, max_passes))
             ret = function(**kwargs)
-            debug('--- OPT:', function.__name__, 'returned', ret or 'finish')
+            # sum the optimization results, assuming value returned is number of cases resolved
+            self.opt_counters[name] = self.opt_counters.get(name, 0) + ret
+            debug('--- OPT:', name, 'returned', ret or 'finish')
             if not ret:
                 break
 
@@ -119,6 +128,7 @@ class LatteOptimizer(object):
     def del_unused_results(self, **kwargs):
         """ Find the stack pops that are marked as popping an unused result, and delete them along
         with the push that causes them. """
+        result = 0
         for pos in xrange(len(self.codes)):
             if match(self.codes[pos], type=CC.ADD, comment=CC.S_UNUSED_RESULT):
                 # Found an unused result, trace back to all pushes that might lead to it.
@@ -138,12 +148,14 @@ class LatteOptimizer(object):
                     elif match(self.codes[jump_pos-1], type=CC.PUSH):
                         debug('   found jumped push at', jump_pos-1)
                         self.mark_deleted(jump_pos-1)
+                        result += 1
                     else:
                         debug('   code at', jump_pos-1, 'is not a push, ignoring')
                 # find the other push (or the only one if there was no label)
                 if match(self.codes[pos+push_off], type=CC.PUSH):
                     debug('   found push at', pos+push_off)
                     self.mark_deleted(pos+push_off)
+                    result += 1
                 else:
                     debug('   code at', pos+push_off, 'is not a push, ignoring')
         return 0
@@ -155,7 +167,7 @@ class LatteOptimizer(object):
         debug('pruned %d deleted codes' % (old_len - len(self.codes)))
         # label maps need to be recalculated after deleting
         self.scan_labels()
-        return 0
+        return old_len - len(self.codes)
 
     def del_jumps_to_next(self, **kwargs):
         """ Delete jump codes that can be safely omitted (passed through). If the jump is
@@ -179,11 +191,14 @@ class LatteOptimizer(object):
         """ Delete unnecessary labels (ones without jumps to them). """
         # First, rescan labels to remove deleted jumps from map
         self.scan_labels()
+        result = 0
         for label, pos in self.labels.iteritems():
             # don't consider labels starting function -- unused function should already be deleted
             if label[0] == '.' and label not in self.jumps:
                 debug('deleting unused label', label, 'at', pos)
                 self.mark_deleted(pos)
+                result += 1
+        return result
 
     def opt_push_pop(self, **kwargs):
         """ Optimize push-pop sequences. Detailed cases:

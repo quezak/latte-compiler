@@ -40,6 +40,7 @@ class Flags(object):
     runtime_file = 'runtime.o'
     output_colors = True
     run_optimizations = True
+    optimizer_summary = False
 
     @classmethod
     def parse_args(cls, argv):
@@ -58,6 +59,8 @@ class Flags(object):
                             help='disable output coloring')
         parser.add_argument('-N', '--no-optimizations', dest='run_optimizations',
                             action='store_false', help='disable optimizations')
+        parser.add_argument('--optimizer-summary', action='store_true',
+                            help='note optimization counters to output')
         parser.parse_args(namespace=cls)  # Saves values in this class, exits on error.
         # Set output file names, if not provided.
         if not cls.asm_file:
