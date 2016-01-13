@@ -266,7 +266,13 @@ class Loc(object):
         """ Location matching, including possible `ANY` values. """
         if isinstance(other, Loc):
             if self.type != other.type:
-                return false
+                return False
             return self.value == self.ANY or other.value == self.ANY or self.value == other.value
         return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
 

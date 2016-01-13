@@ -26,7 +26,7 @@ class LatteOptimizer(object):
         debug('CODES: ', len(self.codes))
         self.run_opt(self.del_unused_results)
         self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
-        # TODO remove unjumped labels
+        self.run_opt(self.del_unused_labels)
         # TODO remove push-pop sequences (first only push X pop X, later with renaming destination)
         # TODO free string memory
         # TODO constant propagation
@@ -55,17 +55,27 @@ class LatteOptimizer(object):
                 continue
             d = code.copy()
             del d['type']
-            debug('[%d]' % i, CC._code_name(code['type']) + ': ' + str(d), no_hdr=True)
+            debug('[%d]' % i, CC._code_name(code['type']) + '->' + str(d), no_hdr=True)
 
     def scan_labels(self):
         """ A function that indexes the labels and jumps in the given codes. """
+        self.labels = {}
+        self.jumps = {}
         for i in xrange(len(self.codes)):
             code = self.codes[i]
             if match(code, type=CC.LABEL):
                 self.labels[code['name']] = i
-            elif match(code, type=(CC.JUMP, CC.IF_JUMP, CC.CALL)):
-                # as functions begin with labels, collect also their calls, it might be useful later
-                label = code['name'] if code['type'] == CC.CALL else code['dest']
+            else:
+                if match(code, type=(CC.JUMP, CC.IF_JUMP)):
+                    label = code['dest']
+                elif match(code, type=CC.CALL):
+                    # functions begin with labels -- collect their calls, it might be useful later
+                    label = code['name']
+                elif match(code, type=CC.PUSH, src=Loc.stringlit(Loc.ANY)):
+                    # collect uses of string constants
+                    label = code['src'].value
+                else:
+                    continue
                 if label in self.jumps:
                     self.jumps[label].append(i)
                 else:
@@ -97,7 +107,7 @@ class LatteOptimizer(object):
 
     def mark_deleted(self, pos):
         """ Mark code at pos for deletion. """
-        self.codes[pos]['_was'] = CC._code_name(self.codes[pos]['type'])
+        self.codes[pos]['_type'] = CC._code_name(self.codes[pos]['type'])
         self.codes[pos]['type'] = CC.DELETED
 
     def del_unused_results(self, **kwargs):
@@ -149,12 +159,25 @@ class LatteOptimizer(object):
             if match(self.codes[pos], type=(CC.JUMP, CC.IF_JUMP)):
                 label = self.codes[pos]['dest']
                 # check if there is any 'non-noop' code between the jump and its label
-                op_pos = self.find_next_match(pos, self.labels[label], negate=True, type=self.NOOPS)
+                # (keep in mind that the label may be before the jump)
+                start = min(pos, self.labels[label])
+                stop = max(pos, self.labels[label])
+                op_pos = self.find_next_match(start, stop, negate=True, type=self.NOOPS)
                 if not op_pos:
                     debug('skipping', self.codes[pos].get('op', 'jmp'), 'to', label, 'at', pos)
                     result += 1
                     self.mark_deleted(pos)
         return result
+
+    def del_unused_labels(self, **kwargs):
+        """ Delete unnecessary labels (ones without jumps to them). """
+        # First, rescan labels to remove deleted jumps from map
+        self.scan_labels()
+        for label, pos in self.labels.iteritems():
+            # don't consider labels starting function -- unused function should already be deleted
+            if label[0] == '.' and label not in self.jumps:
+                debug('deleting unused label', label, 'at', pos)
+                self.mark_deleted(pos)
 
 
 def match(code, attrlist=[], negate=False, **kwargs):

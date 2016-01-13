@@ -53,14 +53,12 @@ class LatteCode(object):
 
     def codes(self):
         """ A generator that yields the intermediate codes. """
-        debug('-> ' + type(self).__name__)
         for instr in self.instr:
             if Codes.is_child(instr):
                 for child_instr in instr['child'].codes():
                     yield child_instr
             else:
                 yield instr
-        debug('<- ' + type(self).__name__)
 
     def get_cur_block(self):
         return self.parent.get_cur_block() if self.parent else None
@@ -74,7 +72,10 @@ class ProgCode(LatteCode):
     def __init__(self, tree, **kwargs):
         super(ProgCode, self).__init__(tree, **kwargs)
         for funtree in tree.children:
-            self.add_fun_code(funtree)
+            if tree.symbol(funtree.name).call_counter > 0 or funtree.name == LP.Builtins.MAIN:
+                self.add_fun_code(funtree)
+            else:
+                debug('skipping uncalled function `%s`' % funtree.name)
 
     def add_fun_code(self, funtree):
         self.add_child(FunCode(funtree))
