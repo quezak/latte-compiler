@@ -15,6 +15,7 @@ from LatteErrors import Status, LatteError
 from LatteNodes import *
 from LatteProgram import *
 from Utils import Flags
+from LatteCodes import Codes  # TODO remove
 
 
 class Latc(object):
@@ -73,12 +74,12 @@ class Latc(object):
 
     @classmethod
     def build_code(cls):
-        """ Generate instructions from the tree. """
+        """ Generate intermediate code from the tree. """
         debug('-----------------------------------------------')
         cls.prog_code = ProgCode(cls.prog_tree)
         cls.prog_code.gen_code()
         debug('-----------------------------------------------')
-        cls.instructions = [i for i in cls.prog_code.instructions()]
+        cls.codes = [i for i in cls.prog_code.codes()]
         if Status.errors() > 0:
             Status.add_error(LatteError('compilation failed'), fatal=True)
 
@@ -88,8 +89,13 @@ class Latc(object):
         debug('-----------------------------------------------')
         try:
             asm_file = sys.stdout if Flags.output_to_stdout() else open(Flags.asm_file, 'w')
-            for instr in cls.instructions:
-                print(instr, file=asm_file)
+            for instr in cls.codes:
+                if (instr['type'] == Codes.EMPTY):
+                    print('\n\n', file=asm_file)
+                    continue
+                t = Codes._code_name(instr['type'])
+                del instr['type']
+                print(t + ': ' + str(instr), file=asm_file)
             if not Flags.output_to_stdout():
                 asm_file.close()
         except IOError as err:
@@ -117,7 +123,7 @@ def main(argv):
     Latc.run_typechecks()
     Latc.build_code()
     Latc.output_assembly()
-    Latc.link_executable()
+    #Latc.link_executable()
     Status.flush()
     sys.exit(Status.errors())
 
