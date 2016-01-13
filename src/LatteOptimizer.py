@@ -76,13 +76,11 @@ class LatteOptimizer(object):
         for i in xrange(len(self.codes)):
             code = self.codes[i]
             if match(code, type=CC.LABEL):
-                self.labels[code['name']] = i
+                self.labels[code['label']] = i
             else:
-                if match(code, type=(CC.JUMP, CC.IF_JUMP)):
-                    label = code['dest']
-                elif match(code, type=CC.CALL):
+                if match(code, type=(CC.JUMP, CC.IF_JUMP, CC.CALL)):
                     # functions begin with labels -- collect their calls, it might be useful later
-                    label = code['name']
+                    label = code['label']
                 elif match(code, type=CC.PUSH, src=Loc.stringlit(Loc.ANY)):
                     # collect uses of string constants
                     label = code['src'].value
@@ -143,9 +141,9 @@ class LatteOptimizer(object):
                 push_off = -1
                 # first, try the two-push case: find the one before the jump
                 if match(self.codes[pos-1], type=CC.LABEL):
-                    debug('   found label', self.codes[pos-1]['name'], 'before pop')
+                    debug('   found label', self.codes[pos-1]['label'], 'before pop')
                     push_off = -2
-                    jump_pos = self.find_jump_before(self.codes[pos-1]['name'], pos)
+                    jump_pos = self.find_jump_before(self.codes[pos-1]['label'], pos)
                     if jump_pos is None:
                         debug('   jump to label not found, ignoring')
                     elif match(self.codes[jump_pos-1], type=CC.PUSH):
@@ -178,7 +176,7 @@ class LatteOptimizer(object):
         result = 0
         for pos in xrange(len(self.codes)):
             if match(self.codes[pos], type=(CC.JUMP, CC.IF_JUMP)):
-                label = self.codes[pos]['dest']
+                label = self.codes[pos]['label']
                 # check if there is any 'non-noop' code between the jump and its label
                 # (keep in mind that the label may be before the jump)
                 start = min(pos, self.labels[label])

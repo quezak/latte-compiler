@@ -88,7 +88,6 @@ class Codes(object):
             for line in cls._asm_instr(code):
                 yield line
 
-    # TODO refactor 'dest' to 'label' in JUMP, 'name' to 'label' in LABEL, etc
     @classmethod
     def _asm_instr(cls, code):
         """ Generator of assembly instructions from a single intermediate code. """
@@ -103,17 +102,17 @@ class Codes(object):
                 yield cls._str_asm('movl', [str(code['src']), str(code['dest'])], code)
                 return
             if case(cls.JUMP):
-                yield cls._str_asm('jmp', [code['dest']], code)
+                yield cls._str_asm('jmp', [code['label']], code)
                 return
             if case(cls.IF_JUMP):
                 yield cls._str_asm('cmpl', [str(code['lhs']), str(code['rhs'])], code)
-                yield cls._str_asm(code['op'], [code['dest']], code)
+                yield cls._str_asm(code['op'], [code['label']], code)
                 return
             if case(cls.LABEL):
-                yield cls._str_asm(code['name'] + ':', [], code)
+                yield cls._str_asm(code['label'] + ':', [], code)
                 return
             if case(cls.CALL):
-                yield cls._str_asm('call', [code['name']], code)
+                yield cls._str_asm('call', [code['label']], code)
                 return
             if case(cls.ENTER):
                 yield cls._str_asm('pushl', ['%ebp'], code)
@@ -138,8 +137,8 @@ class Codes(object):
                 return
             if case(cls.BOOL_OP):
                 yield cls._str_asm('cmpl', [str(code['lhs']), str(code['rhs'])], code)
-                yield cls._str_asm(code['op'], [Loc.regcmp], code)
-                yield cls._str_asm('movzbl', [Loc.regcmp, str(code['dest'])], code)
+                yield cls._str_asm(code['op'], [str(Loc.reg('cmp'))], code)
+                yield cls._str_asm('movzbl', [str(Loc.reg('cmp')), str(code['dest'])], code)
                 return
             if case(cls.ASM):
                 yield cls._str_asm(code['parts'][0], code['parts'][1:], code)
@@ -188,7 +187,7 @@ class Loc(object):
     # Note: cdecl needs EBP, ESI, EDI, EBX preserved.
     top = '%esp'
     ebp = '%ebp'
-    regcmp = '%al'
+    cmp = '%al'
 
     # type tokens
     CONST = 'const'
