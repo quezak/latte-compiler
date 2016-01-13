@@ -100,7 +100,7 @@ class Latc(object):
         debug('-------------- ASM OUTPUT ---------------------')
         try:
             asm_file = sys.stdout if Flags.output_to_stdout() else open(Flags.asm_file, 'w')
-            for instr in Codes.gen_asm(cls.codes):
+            for instr in Codes.gen_asm(cls.optimizer.codes):
                 print(str(instr), file=asm_file)
             if not Flags.output_to_stdout():
                 asm_file.close()

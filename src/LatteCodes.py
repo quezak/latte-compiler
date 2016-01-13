@@ -146,6 +146,9 @@ class Codes(object):
             if case(cls.EMPTY):
                 yield ''
                 return
+            if case(cls.DELETED):  # TODO remove this, DELETED codes should be really deleted
+                yield '\t# [deleted]'
+                return
             if case(cls.CHILD):
                 raise InternalError('code type %s not allowed here', cls._code_name(code['type']))
             if case():

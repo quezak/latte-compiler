@@ -1,11 +1,15 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
 
+from bisect import bisect_left
+
 from FuturePrint import debug
 from LatteCodes import Codes, Loc
 
 
 class LatteOptimizer(object):
+
+    INF_PASSES = 100  # number of passes considered 'sufficiently infinite'
 
     def __init__(self, codes):
         self.codes = codes
@@ -16,9 +20,13 @@ class LatteOptimizer(object):
 
     def run_all(self):
         """ Optimizer main function, which runs the implemented optimizations on the codes. """
-        pass
-        self.run_opt(del_unused_results)
-        self.run_opt(clear_deleted_codes)
+        debug('CODES: ', len(self.codes))
+        self.run_opt(self.del_unused_results)
+        self.run_opt(self.clear_deleted_codes)
+        debug('CODES: ', len(self.codes))
+        # TODO remove jump to next instr
+        # TODO remove unjumped labels
+        # TODO free string memory
 
     def run_opt(self, function, max_passes=1, **kwargs):
         """ A function to run a single optimization, possibly with many passes in a row.
@@ -28,7 +36,7 @@ class LatteOptimizer(object):
         Other keyword arguments are passed to the optimization function. """
         for count in xrange(max_passes):
             debug("--- OPT:", function.__name__, " pass:", count+1)
-            ret = function(self.codes, **kwargs)
+            ret = function(**kwargs)
             if not ret:
                 debug("--- OPT:", function.__name__, "returned zero")
                 break
@@ -61,6 +69,67 @@ class LatteOptimizer(object):
         for label in self.labels:
             debug('[%d]' % self.labels[label], label, ': ', str(self.jumps.get(label, None)))
 
+    def _find_match_by_iterable(self, iterable, attrlist, **kwargs):
+        """ Find 'next' matching code according to an arbitrary order defined by iterable.
+
+        attrlist and kwargs specify matching rules as in match(). """
+        for pos in iterable:
+            if match(self.codes[pos], attrlist, **kwargs):
+                return pos
+        return None
+
+    def find_prev_match(self, pos, attrlist, **kwargs):
+        return self._find_match_by_iterable(reversed(xrange(pos)), attrlist, **kwargs)
+
+    def find_next_match(self, pos, attrlist, **kwargs):
+        return self._find_match_by_iterable(xrange(pos+1, len(self.codes)), attrlist, **kwargs)
+
+    def get_jump_before(self, label, pos):
+        """ Return position of last code jumping to a label *before* position pos. """
+        ret = bisect_left(self.jumps.get(label, []), pos) - 1
+        return self.jumps[label][ret] if ret >= 0 else None
+
+    def del_unused_results(self, **kwargs):
+        """ Find the stack pops that are marked as popping an unused result, and delete them along
+        with the push that causes them. """
+        for pos in xrange(len(self.codes)):
+            if match(self.codes[pos], type=Codes.ADD, comment=Codes.S_UNUSED_RESULT):
+                # Found an unused result, trace back to all pushes that might lead to it.
+                # We don't need to trace arbitrary jump sequences that lead there, as for now
+                # the sequence should be either just [push, pop] or, for bool expr evaluation:
+                # [push 1, jump after, ..., push 0, label after, pop]
+                debug('unused result at', pos)
+                self.codes[pos]['type'] = Codes.DELETED
+                push_off = -1
+                # first, try the two-push case: find the one before the jump
+                if match(self.codes[pos-1], type=Codes.LABEL):
+                    debug('   found label', self.codes[pos-1]['name'], 'before pop')
+                    push_off = -2
+                    jump_pos = self.get_jump_before(self.codes[pos-1]['name'], pos)
+                    if jump_pos is None:
+                        debug('   jump to label not found, ignoring')
+                    elif match(self.codes[jump_pos-1], type=Codes.PUSH):
+                        debug('   found jumped push at', jump_pos-1)
+                        self.codes[jump_pos-1]['type'] = Codes.DELETED
+                    else:
+                        debug('   code at', jump_pos-1, 'is not a push, ignoring')
+                # find the other push (or the only one if there was no label)
+                if match(self.codes[pos+push_off], type=Codes.PUSH):
+                    debug('   found push at', pos+push_off)
+                    self.codes[pos+push_off]['type'] = Codes.DELETED
+                else:
+                    debug('   code at', pos+push_off, 'is not a push, ignoring')
+        return 0
+
+    def clear_deleted_codes(self, **kwargs):
+        """ Really delete the codes marked DELETED. """
+        old_len = len(self.codes)
+        self.codes = filter(lambda code: not match(code, type=Codes.DELETED), self.codes)
+        debug('pruned %d deleted codes' % (old_len - len(self.codes)))
+        # label maps need to be recalculated after deleting
+        self.scan_labels()
+        return 0
+
 
 def match(code, attrlist=[], **kwargs):
     """ Return True if given code matches the specification:
@@ -80,14 +149,3 @@ def match(code, attrlist=[], **kwargs):
             if key not in code or code[key] != value:
                 return False
     return True
-
-
-def del_unused_results(codes, **kwargs):
-    """ Find the stack pops that are marked as popping an unused result, and delete them along with
-    the push that causes them. """
-    return 0  # TODO
-
-
-def clear_deleted_codes(codes, **kwargs):
-    """ Really delete the codes marked DELETED. """
-    return 0  # TODO

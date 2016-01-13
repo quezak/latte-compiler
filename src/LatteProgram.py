@@ -367,7 +367,7 @@ class UnopCode(ExprCode):
                 if self.has_jump_codes(kwargs):
                     # called as part of condition evaluation -- just forward the jump labels
                     self.add_child_by_idx(0, on_true=kwargs['on_false'],
-                                            on_false=kwargs['on_true'])
+                                          on_false=kwargs['on_true'])
                     return
                 # otherwise -- evaluate the boolean value: arg == false (0)
                 self.add_child_by_idx(0)
