@@ -25,7 +25,7 @@ Argumenty opcjonalne:
  * `--optimizer-summary`: po zakończeniu optymalizacji wypisuje statystyki ile razy użyto którego rodzaju ulepszeń.
 
 ### Użyte biblioteki
-W normalnym przypadku należałoby zainstalować ANTLR w systemie, a biblioteki pythonowe przy użyciu `pip` lub systemowego managera pakietów, jednak celem łatwej kompilacji na `students` załączyłem wszystko w podkatalogu `lib/`.
+W normalnym przypadku należałoby zainstalować ANTLR w systemie, a biblioteki pythonowe przy użyciu `pip` lub systemowego managera pakietów, jednak celem łatwej kompilacji na `students` załączyłem wszystko w podkatalogu `lib/`. Dodatkowo, w podkatalogu `utils/` załączam definicje kolorowania składni gramatyk ANTLR dla `vim`a.
 
  * `ANTLR 3.1.3` -- zestaw narzędzi do generacji parserów, wraz z zależnościami:
    * pakiet `stringtemplate` dla Javy (w  której jest napisany sam ANTLR)

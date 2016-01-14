@@ -1,5 +1,6 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Latte compiler main function: runs all the parts in the right order. """
 
 from __future__ import print_function
 from subprocess import check_output, CalledProcessError, STDOUT

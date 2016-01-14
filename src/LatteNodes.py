@@ -1,5 +1,8 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Nodes of the main code tree, which is build from LatteParser's AST. They also contain methods
+for checking expression and return types, function calls, returns on every branch and more static
+checks. """
 
 import abc
 import LatteParser as LP

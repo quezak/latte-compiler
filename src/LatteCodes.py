@@ -1,5 +1,7 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Class for generation and manipulation of intermediate language instructions, including the final
+transformation to assembly. """
 
 from LatteErrors import InternalError
 from Utils import switch
@@ -168,6 +170,7 @@ class Codes(object):
 
     @classmethod
     def _str_code(cls, code):
+        """ Transform the intermediate instruction to string, for debug purposes. """
         res = []
         for key, value in sorted(code.iteritems()):
             val_str = str(value) if not isinstance(value, str) else value
@@ -253,6 +256,12 @@ class Loc(object):
     def mkaddr(pos, offset=None):
         return '%s(%s)' % (str(offset or ''), pos)
 
+    def is_constant(self):
+        return self.type == self.CONST or self.type == self.STRINGLIT
+
+    def is_reg(self):
+        return self.type == self.REG
+
     def __str__(self):
         for case in switch(self.type):
             if case(self.CONST):
@@ -290,12 +299,6 @@ class Loc(object):
             return result
         return not result
 
-    def is_constant(self):
-        return self.type == self.CONST or self.type == self.STRINGLIT
-
-    def is_reg(self):
-        return self.type == self.REG
-
     def __hash__(self):
-        # warning: this class should not be hashable. Remember to not edit instances in a dict.
+        # Warning: this class should not be hashable. Remember to not edit instances in a dict.
         return hash(str(self))

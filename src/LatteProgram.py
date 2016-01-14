@@ -1,5 +1,9 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Tree node classes that act as wrappers for LatteNodes (just to be able to separate these two
+already large files). Their methods generate the intermediate language code, first each for itself,
+then they are merged into one big list. Also, stack space requirements and variable locations are
+computed while generating the codes (at least for now, it should be moved to a later stage). """
 
 import abc
 import LatteParser as LP

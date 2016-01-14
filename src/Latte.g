@@ -1,8 +1,8 @@
 grammar Latte;
 /*------------------------------------------------------------------
- * Artur Kozak [320770], MRJP 2014 zadanie 2
- * Gramatyka ANTLR3 generujaca drzewo skladni abstrakcyjnej
- * z tekstu programu w jezyku Latte
+ * Artur Kozak [320770], MRJP 2015 zadanie 2
+ * ANTLR3 gramamr generating abstract syntax tree
+ * from Latte source code
  *------------------------------------------------------------------*/
 
 options {

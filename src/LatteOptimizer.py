@@ -1,5 +1,8 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Optimizer for the intermediate language. Various optimization methods are run by the main
+optimizer loop, repeated a configured number of times. Also contains helper functions for matching
+sequences of instructions to optimize. """
 
 from bisect import bisect_left
 from itertools import izip, islice, imap
@@ -16,7 +19,7 @@ class AnyOf(object):
         self.options = args
 
     def __eq__(self, other):
-        return any(map(lambda x: _match_multi(x, other), self.options))
+        return any(map(lambda x: x == other, self.options))
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -56,7 +59,7 @@ class LatteOptimizer(object):
             self.run_opt(self.del_unused_labels)
             self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
             self.run_opt(self.propagate_constants)
-            #self.run_opt(self.clear_deleted_codes)
+            self.run_opt(self.clear_deleted_codes)
             if sum(self.opt_counters.values()) == sum_counters:
                 debug('------------------ all optimizations returned finish -----------------')
                 break
@@ -209,7 +212,7 @@ class LatteOptimizer(object):
             start = min(pos, self.labels[label])
             stop = max(pos, self.labels[label])
             try:
-                op_pos = self.gen_next_match(start, stop, negate=True, type=self.NOOPS).next()
+                self.gen_next_match(start, stop, negate=True, type=self.NOOPS).next()
             except StopIteration:
                 debug('skipping', self.codes[pos].get('op', 'jmp'), 'to', label, 'at', pos)
                 result += 1
@@ -358,13 +361,10 @@ class LatteOptimizer(object):
                     apply_needed = True
                     pocket = {}
             # [6] Finally, when moving a constant to a register, stow it in the pocket instead.
-            #if code['type'] == CC.MOV:
-                #import ipdb; ipdb.set_trace() 
             if (match(code, type=CC.MOV, src=self.CONST_LOCS, dest=Loc.reg(Loc.ANY)) and
                     not match(code, comment=CC.S_PROPAGATED)):
                 debug('mov const %s -> reg %s found at %d' % (code['src'].value,
                                                               code['dest'].value, pos))
-                #import ipdb; ipdb.set_trace() 
                 pocket[code['dest']] = code['src']
                 self.mark_deleted(pos, comment=CC.S_PROPAGATED)
         # Turn the pocket indicators into assignments
@@ -415,13 +415,6 @@ def match(code, attrlist=[], negate=False, **kwargs):
         if key not in code or code[key] != value:
             return False
     return True
-
-
-# TODO remove after debugging
-def _match_multi(a, b):
-    result = a == b
-    #debug('_match_multi', result, 'a:', str(a), 'b:', str(b))
-    return result
 
 
 def code_spec(attrlist=[], **kwargs):

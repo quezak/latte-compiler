@@ -1,5 +1,7 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Commandline flags interface class and a very useful switch utility . """
+
 import argparse
 from os.path import splitext
 

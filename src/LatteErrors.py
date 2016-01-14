@@ -1,5 +1,6 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Exception classes and status/error manager. """
 
 import sys
 import re

@@ -1,6 +1,7 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
-""" Message printing functions using print() from python3. """
+""" Message printing functions using print() from python3, and a helper utility for outputting ANSI
+color codes to terminal. """
 from __future__ import print_function
 import sys
 
@@ -11,6 +12,7 @@ class Colors(object):
     """ ANSI coloring text for terminal output """
     @staticmethod
     def _color_if_term(color):
+        """ Output a color code if output is a terminal and coloring was not disabled manually. """
         if (not sys.stderr.isatty()) or (not Utils.Flags.output_colors):
             return ''
         return '\033[' + color + 'm'
@@ -48,6 +50,7 @@ class Colors(object):
         return cls._colored_text('\'' + text + '\'', '36')
 
 
+# message printing functions of various severity.
 def debug(*objs, **kwargs):
     if Utils.Flags.debug:
         if kwargs.get('no_hdr', False):

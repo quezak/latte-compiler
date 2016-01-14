@@ -1,5 +1,6 @@
 #!/usr/bin/python2
 # -*- coding: utf8 -*-
+""" Helper classes for LatteNodes: symbols for the symbol tables. """
 
 from FuturePrint import debug
 from LatteErrors import Status, TypecheckError

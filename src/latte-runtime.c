@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/*
+ * Latte runtime library, containing all the required predefined functions, and one additional
+ * utility for string concatenation.
+ */
 
 void printInt(int n) {
     (void) printf("%d\n", n);
