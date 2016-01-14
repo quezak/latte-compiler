@@ -48,7 +48,7 @@ class Flags(object):
         parser.add_argument('input_file',
                             help='Latte source file (\'-\' for stdin, implies asm_output=\'-\')')
         parser.add_argument('-o', '--output', dest='bin_file', help='custom output executable file')
-        parser.add_argument('-s', '--asm_output', dest='asm_file', help="""custom output assembly
+        parser.add_argument('-s', '--asm-output', dest='asm_file', help="""custom output assembly
                             file ('-' for stdout, does not create executable)""")
         parser.add_argument('-d', '--debug', action='store_true', help="""print debug messages
                             and output messages immediately (in particular, omit the requirement for
