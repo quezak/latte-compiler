@@ -126,11 +126,11 @@ class Codes(object):
                 return
             if case(cls.ADD, cls.SUB, cls.MUL):
                 op = {cls.ADD: 'addl', cls.SUB: 'subl', cls.MUL: 'imull'}[code['type']]
-                yield cls._str_asm(op, [str(code['lhs']), str(code['rhs'])], code)
+                yield cls._str_asm(op, [str(code['src']), str(code['dest'])], code)
                 return
             if case(cls.DIV):
                 yield cls._str_asm('cdq', [], code)
-                yield cls._str_asm('idivl', [str(code['lhs'])], code)
+                yield cls._str_asm('idivl', [str(code['src'])], code)
                 return
             if case(cls.NEG):
                 yield cls._str_asm('negl', [str(code['dest'])], code)
