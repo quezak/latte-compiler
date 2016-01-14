@@ -9,6 +9,7 @@ all:
 
 .PHONY: clean
 clean:
-	rm -f $(LATC) lib/$(RUNTIME) lib/antlr{,3}/*.py{c,o} 
+	rm -f $(LATC) lib/$(RUNTIME)
+	find lib -name '*.pyc' -or -name '*.pyo' | xargs rm -f
 	$(MAKE) -C src clean
 

@@ -39,7 +39,7 @@ class Flags(object):
     asm_file = None
     runtime_file = 'runtime.o'
     output_colors = True
-    optimizer_passes = 1
+    optimizer_passes = 2
     optimizer_summary = False
 
     @classmethod

@@ -8,7 +8,7 @@ JAVA = java
 JFLAGS = -classpath ../lib/antlr3.jar:../lib/antlr.jar:../lib/stringtemplate.jar -Djava.library.path=/lib:/usr/lib:../lib -Dfile.encoding=utf-8
 ANTLR = $(JAVA) $(JFLAGS) org.antlr.Tool
 DIR = $(shell pwd)
-LIBDIR = $(realpath $(DIR)/../lib)
+LIBDIR = $(DIR)/../lib
 CC = gcc
 CFLAGS = -m32 -Wall
 RUNTIME = runtime.o
