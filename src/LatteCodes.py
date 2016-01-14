@@ -67,6 +67,15 @@ class Codes(object):
 
     @classmethod
     def mkcode(cls, type, **kwargs):
+        """ Construct a dict representing the intermediate code. Some arg naming conventions:
+
+         * lhs: Loc containing value of left operand (so location will only be read)
+         * rhs: Loc containing value of right operand AND where operator's result will be stored
+         * src: Loc containing source of an operation (so location will only be read)
+         * dest: Loc containing location where result will be stored (so it will *not* be read)
+         * label: plaintext name of a label (for jumps, calls and label placement)
+         * parts: special arg for the ASM code, contains the asm line to output as a list of words
+         * comment: if present, will be appended to the output assembly line. """
         d = kwargs.copy()
         d['type'] = type
         return d
@@ -127,14 +136,14 @@ class Codes(object):
                 return
             if case(cls.ADD, cls.SUB, cls.MUL):
                 op = {cls.ADD: 'addl', cls.SUB: 'subl', cls.MUL: 'imull'}[code['type']]
-                yield cls._str_asm(op, [str(code['src']), str(code['dest'])], code)
+                yield cls._str_asm(op, [str(code['lhs']), str(code['rhs'])], code)
                 return
             if case(cls.DIV):
                 yield cls._str_asm('cdq', [], code)
-                yield cls._str_asm('idivl', [str(code['src'])], code)
+                yield cls._str_asm('idivl', [str(code['lhs'])], code)
                 return
             if case(cls.NEG):
-                yield cls._str_asm('negl', [str(code['dest'])], code)
+                yield cls._str_asm('negl', [str(code['rhs'])], code)
                 return
             if case(cls.BOOL_OP):
                 yield cls._str_asm('cmpl', [str(code['lhs']), str(code['rhs'])], code)
@@ -173,6 +182,9 @@ class Codes(object):
             instr = '\t' + instr
         # add comma-separated arguments
         result = instr + '\t' + ', '.join(args)
+        # append optional data, if any
+        if 'append' in code:
+            result += code['append']
         # append comment at the end
         if 'comment' in code:
             result += '  # ' + code['comment']

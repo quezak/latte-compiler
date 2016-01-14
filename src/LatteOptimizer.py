@@ -287,7 +287,7 @@ class LatteOptimizer(object):
                 # Also, invalidate %eax and %edx values in pocket as idivl stores result there.
                 if code['type'] == CC.DIV:
                     dropped = {reg: val for reg, val in pocket.iteritems()
-                               if reg in [Loc.reg('a'), code['src']]}
+                               if reg in [Loc.reg('a'), code['lhs']]}
                     debug('div instruction at %d, applying regs %s' % (
                         pos, str(map(str, dropped.keys()))))
                     if len(dropped):
@@ -299,7 +299,7 @@ class LatteOptimizer(object):
                     continue
                 # [1] Apply values from pocket first, in case of e.g. [mov $1 %eax, mov %eax %edx].
                 # Only attrs 'src', 'lhs' can use a const value.
-                for attr in set(['src', 'lhs']).intersection(code.keys()):
+                for attr in [a for a in ['src', 'lhs'] if a in code.keys()]:
                     if not code[attr].is_reg() or code[attr] not in pocket:
                         continue
                     debug('attr %s is reg %s at %d, applying %s from pocket' % (
@@ -308,10 +308,9 @@ class LatteOptimizer(object):
                     result += 1
                 # [2] If a register is assigned something, delete its entry in pocket.
                 # Only attrs modifying their location are 'dest', 'rhs'.
-                # TODO hack note: 'rhs' needs to be reviewed *first*, in case both rhs and dest are
-                # the same register -- it would get deleted too early. Fix this when rewriting this
-                # ugly function.
-                for attr in reversed(sorted(set(['rhs', 'dest']).intersection(code.keys()))):
+                # Note: rhs needs to be reviewed first, otherwise if rhs and dest are the same we
+                # would forget the pocket value at dest, while it is still needed by rhs.
+                for attr in [a for a in ['rhs', 'dest'] if a in code.keys()]:
                     if not code[attr].is_reg() or code[attr] not in pocket:
                         continue
                     value = pocket[code[attr]].value
@@ -332,7 +331,7 @@ class LatteOptimizer(object):
                         # but the right operand for cmpl also needs to be dropped.
                         debug('reg %s is %s at %d, forgetting from pocket' % (
                             code[attr].value, attr, pos))
-                        if attr == 'rhs' and code['type'] in [CC.IF_JUMP, CC.BOOL_OP]:
+                        if attr == 'rhs':
                             self._add_to_apply_pocket(pos, {code['rhs']: pocket[code['rhs']]})
                             apply_needed = True
                             debug('   ^ but applying reg %s' % code['rhs'].value)

@@ -34,9 +34,9 @@ class LatteCode(object):
         """ Appends a code. """
         self.instr.append(CC.mkcode(type, **kwargs))
 
-    def add_asm_instr(self, parts):
+    def add_asm_instr(self, parts, **kwargs):
         """ Appends a ASM type instruction (special assembly directives). """
-        self.add_instr(CC.ASM, parts=parts)
+        self.add_instr(CC.ASM, parts=parts, **kwargs)
 
     @abc.abstractmethod
     def gen_code(self, **kwargs):
@@ -92,10 +92,9 @@ class ProgCode(LatteCode):
             self.add_child_code(child)
         # string constants (after children, so their labels are allocated)
         self.add_instr(CC.EMPTY)
-        self.add_asm_instr(['.section', '.rodata'])
+        self.add_asm_instr(['.section', '.rodata'], comment='string constants defined below')
         for string, label in CC._strings.iteritems():
-            self.add_instr(CC.LABEL, label=label)
-            self.add_asm_instr(['.string', string])
+            self.add_instr(CC.LABEL, label=label, append='.string ' + string)
 
 
 # function ######################################################################################
@@ -202,7 +201,7 @@ class StmtCode(LatteCode):
             if case(LP.INCR, LP.DECR):
                 op = CC.ADD if self.type.type == LP.INCR else CC.SUB
                 addr = self.tree.symbol(self.children[0].value).pos
-                self.add_instr(op, src=Loc.const(1), dest=Loc.mem(addr))
+                self.add_instr(op, lhs=Loc.const(1), rhs=Loc.mem(addr))
                 break
             if case():
                 raise NotImplementedError('unknown statement type: %s' % str(self.type))
@@ -293,7 +292,7 @@ class ExprCode(StmtCode):
         will be optimized out later. """
         if self.tree.unused_result:
             debug('POP UNUSED RESULT', self.tree.pos)
-            self.add_instr(CC.ADD, src=Loc.const(CC.var_size), dest=Loc.reg('top'),
+            self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'),
                            comment=CC.S_UNUSED_RESULT)
 
     @staticmethod
@@ -364,7 +363,7 @@ class UnopCode(ExprCode):
             if case(LP.NEG):  # integer negation
                 self.add_child_by_idx(0)
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
-                self.add_instr(CC.NEG, dest=Loc.reg('a'))
+                self.add_instr(CC.NEG, rhs=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.NOT):  # logical not
@@ -419,13 +418,13 @@ class BinopCode(ExprCode):
                 op = {LP.PLUS: CC.ADD, LP.MINUS: CC.SUB, LP.MULT: CC.MUL}[self.type.type]
                 self.add_instr(CC.POP, dest=Loc.reg('d'))
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
-                self.add_instr(op, src=Loc.reg('d'), dest=Loc.reg('a'))
+                self.add_instr(op, lhs=Loc.reg('d'), rhs=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.DIV, LP.MOD):
                 self.add_instr(CC.POP, dest=Loc.reg('c'))
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
-                self.add_instr(CC.DIV, src=Loc.reg('c'))
+                self.add_instr(CC.DIV, lhs=Loc.reg('c'))
                 # quotient in eax, remainder in edx
                 result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type]
                 self.add_instr(CC.PUSH, src=result)
@@ -493,7 +492,7 @@ class BinopCode(ExprCode):
         self.add_child_by_idx(1)
         self.add_child_by_idx(0)
         self.add_instr(CC.CALL, label=CC.strcat_function)
-        self.add_instr(CC.ADD, src=Loc.const(2 * CC.var_size), dest=Loc.reg('top'))
+        self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
         self.add_instr(CC.PUSH, src=Loc.reg('a'))
         # TODO free memory later
 
@@ -515,7 +514,7 @@ class FuncallCode(ExprCode):
         # we first make enough stack space for all of them and move them in the right place after
         # evaluation.
         if len(self.children) > 1:
-            self.add_instr(CC.SUB, src=Loc.const(argmem), dest=Loc.reg('top'))
+            self.add_instr(CC.SUB, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
             for i in xrange(len(self.children)):
                 self.add_child_by_idx(i)  # Leaves the value on stack.
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
@@ -527,7 +526,7 @@ class FuncallCode(ExprCode):
         # [3] Call and pop arguments.
         self.add_instr(CC.CALL, label=self.fname)
         if argmem > 0:
-            self.add_instr(CC.ADD, src=Loc.const(argmem), dest=Loc.reg('top'))
+            self.add_instr(CC.ADD, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
         # [4] finish depending on how we were called:
         if self.has_jump_codes(kwargs):
             if self.fsym.ret_type.type != LP.BOOLEAN:
