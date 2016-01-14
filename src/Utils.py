@@ -39,7 +39,7 @@ class Flags(object):
     asm_file = None
     runtime_file = 'runtime.o'
     output_colors = True
-    run_optimizations = True
+    optimizer_passes = 1
     optimizer_summary = False
 
     @classmethod
@@ -57,8 +57,8 @@ class Flags(object):
                             help='path to latte runtime library (default runtime.o)')
         parser.add_argument('-C', '--no-color', dest='output_colors', action='store_false',
                             help='disable output coloring')
-        parser.add_argument('-N', '--no-optimizations', dest='run_optimizations',
-                            action='store_false', help='disable optimizations')
+        parser.add_argument('-O', '--optimizer-passes', type=int,
+                            help='max optimizer loop iterations')
         parser.add_argument('--optimizer-summary', action='store_true',
                             help='note optimization counters to output')
         parser.parse_args(namespace=cls)  # Saves values in this class, exits on error.

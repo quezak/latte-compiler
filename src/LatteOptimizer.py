@@ -42,15 +42,26 @@ class LatteOptimizer(object):
         self.scan_labels()
         self.opt_counters = {}
 
-    def run_all(self):
+    def run_all(self, max_passes):
         """ Optimizer main function, which runs the implemented optimizations on the codes. """
-        self.run_opt(self.del_unused_results)
-        self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
-        self.run_opt(self.del_unused_labels)
-        self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
-        self.run_opt(self.propagate_constants)
+        if max_passes == 0:
+            debug('optimizer disabled')
+            return
+        self.run_opt(self.del_unused_results)  # no need to run this one multiple times
+        for count in xrange(max_passes):
+            debug('------------- global optimizer pass %d (of max %d) -------------' % (
+                count+1, max_passes))
+            sum_counters = sum(self.opt_counters.values())
+            self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
+            self.run_opt(self.del_unused_labels)
+            self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
+            self.run_opt(self.propagate_constants)
+            #self.run_opt(self.clear_deleted_codes)
+            if sum(self.opt_counters.values()) == sum_counters:
+                debug('------------------ all optimizations returned finish -----------------')
+                break
+        # TODO don't assign dead vars
         # TODO free string memory
-        #self.run_opt(self.clear_deleted_codes)
         if Flags.optimizer_summary:
             Status.add_note(LatteError('optimizer case counters:'))
             for name, count in self.opt_counters.iteritems():
@@ -64,7 +75,7 @@ class LatteOptimizer(object):
         Other keyword arguments are passed to the optimization function. """
         for count in xrange(max_passes):
             name = function.__name__
-            debug('--- OPT:', name, 'pass %d (of max %d)' % (count, max_passes))
+            debug('--- OPT:', name, 'pass %d (of max %d)' % (count+1, max_passes))
             ret = function(**kwargs)
             # sum the optimization results, assuming value returned is number of cases resolved
             self.opt_counters[name] = self.opt_counters.get(name, 0) + ret
@@ -95,7 +106,7 @@ class LatteOptimizer(object):
                 if match(code, type=AnyOf(CC.JUMP, CC.IF_JUMP, CC.CALL)):
                     # functions begin with labels -- collect their calls, it might be useful later
                     label = code['label']
-                elif match(code, type=CC.PUSH, src=Loc.stringlit(Loc.ANY)):
+                elif match(code, type=AnyOf(CC.PUSH, CC.MOV), src=Loc.stringlit(Loc.ANY)):
                     # collect uses of string constants
                     label = code['src'].value
                 else:
@@ -266,7 +277,6 @@ class LatteOptimizer(object):
         # Also remember that division requires both arguments in registers.
         # For result, count when a register is replaced with a value from pocket.
         # TODO another level: propagate up operators and if_jumps if both operands are constants.
-        self.print_codes()
         result = 0
         pocket = {}
         apply_needed = False
@@ -386,6 +396,8 @@ class LatteOptimizer(object):
             del self.codes[pos]['apply_pocket']
             self.codes[pos:pos] = moves
             start_pos = pos + len(moves) - 1
+        # rebuild the jump maps
+        self.scan_labels()
 
 
 def match(code, attrlist=[], negate=False, **kwargs):
