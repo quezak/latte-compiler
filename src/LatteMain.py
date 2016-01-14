@@ -88,10 +88,10 @@ class Latc(object):
     def run_optimizer(cls):
         """ Run all the optimizations. """
         debug('-------------- OPTIMIZATIONS ------------------')
+        cls.optimizer = LatteOptimizer(cls.codes)
         if not Flags.run_optimizations:
             debug('(optimizations disabled)')
             return
-        cls.optimizer = LatteOptimizer(cls.codes)
         cls.optimizer.run_all()
 
     @classmethod

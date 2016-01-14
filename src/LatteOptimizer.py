@@ -10,15 +10,29 @@ from LatteErrors import Status, LatteError
 from Utils import Flags
 
 
+class AnyOf(object):
+    """ Helper class to express match alternatives, passed to match() as argument of any kwarg. """
+    def __init__(self, *args):
+        self.options = args
+
+    def __eq__(self, other):
+        return any(map(lambda x: _match_multi(x, other), self.options))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 class LatteOptimizer(object):
 
     INF_PASSES = 100  # number of passes considered 'sufficiently infinite'
     # Codes that 'don't do anything', e.g. if there are no other codes between a jump and its
     # label, the jump can be safely deleted.
-    NOOPS = (CC.LABEL, CC.EMPTY, CC.DELETED)
+    NOOPS = AnyOf(CC.LABEL, CC.EMPTY, CC.DELETED)
     # Codes that do an operation but no flow control or stack operations, so in [push, <op>, pop]
     # push and pop can be combined into mov if the operation's arguments are unrelated.
-    NO_STACK_OPS = (CC.MOV, CC.ADD, CC.SUB, CC.MUL, CC.NEG)
+    NO_STACK_OPS = AnyOf(CC.MOV, CC.ADD, CC.SUB, CC.MUL, CC.NEG)
+    # All locations considered constant.
+    CONST_LOCS = AnyOf(Loc.const(Loc.ANY), Loc.stringlit(Loc.ANY))
 
     def __init__(self, codes):
         self.codes = codes
@@ -34,9 +48,9 @@ class LatteOptimizer(object):
         self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
         self.run_opt(self.del_unused_labels)
         self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
+        self.run_opt(self.propagate_constants)
         # TODO free string memory
-        # TODO constant propagation
-        self.run_opt(self.clear_deleted_codes)
+        #self.run_opt(self.clear_deleted_codes)
         if Flags.optimizer_summary:
             Status.add_note(LatteError('optimizer case counters:'))
             for name, count in self.opt_counters.iteritems():
@@ -78,7 +92,7 @@ class LatteOptimizer(object):
             if match(code, type=CC.LABEL):
                 self.labels[code['label']] = i
             else:
-                if match(code, type=(CC.JUMP, CC.IF_JUMP, CC.CALL)):
+                if match(code, type=AnyOf(CC.JUMP, CC.IF_JUMP, CC.CALL)):
                     # functions begin with labels -- collect their calls, it might be useful later
                     label = code['label']
                 elif match(code, type=CC.PUSH, src=Loc.stringlit(Loc.ANY)):
@@ -94,22 +108,23 @@ class LatteOptimizer(object):
         for label in self.labels:
             debug('[%d]' % self.labels[label], label, ': ', str(self.jumps.get(label, None)))
 
-    def _find_match_by_iterable(self, iterable, attrlist, **kwargs):
-        # TODO maybe rewrite these with some itertools
-        """ Find 'next' matching code according to an arbitrary order defined by `iterable`.
+    def _gen_match_by_iterable(self, iterable, attrlist, **kwargs):
+        """ Generate indexes of matching codes according to an arbitrary order defined by iterable.
 
         attrlist and kwargs specify matching rules as in match(). """
+        # TODO maybe rewrite these with some itertools
         for pos in iterable:
             if match(self.codes[pos], attrlist, **kwargs):
-                return pos
-        return None
+                yield pos
 
-    def find_prev_match(self, pos, min_pos=0, attrlist=[], **kwargs):
-        return self._find_match_by_iterable(reversed(xrange(min_pos, pos)), attrlist, **kwargs)
+    def gen_prev_match(self, pos, min_pos=0, attrlist=[], **kwargs):
+        for c in self._gen_match_by_iterable(reversed(xrange(min_pos, pos)), attrlist, **kwargs):
+            yield c
 
-    def find_next_match(self, pos, max_pos=None, attrlist=[], **kwargs):
-        return self._find_match_by_iterable(xrange(pos+1, max_pos or len(self.codes)),
-                                            attrlist, **kwargs)
+    def gen_next_match(self, pos, max_pos=None, attrlist=[], **kwargs):
+        for c in self._gen_match_by_iterable(xrange(pos+1, max_pos or len(self.codes)),
+                                             attrlist, **kwargs):
+            yield c
 
     def find_jump_before(self, label, pos):
         """ Return position of last code jumping to a label *before* position pos. """
@@ -174,18 +189,20 @@ class LatteOptimizer(object):
         """ Delete jump codes that can be safely omitted (passed through). If the jump is
         conditional, the comparision itself is also deleted. """
         result = 0
-        for pos in xrange(len(self.codes)):
-            if match(self.codes[pos], type=(CC.JUMP, CC.IF_JUMP)):
-                label = self.codes[pos]['label']
-                # check if there is any 'non-noop' code between the jump and its label
-                # (keep in mind that the label may be before the jump)
-                start = min(pos, self.labels[label])
-                stop = max(pos, self.labels[label])
-                op_pos = self.find_next_match(start, stop, negate=True, type=self.NOOPS)
-                if not op_pos:
-                    debug('skipping', self.codes[pos].get('op', 'jmp'), 'to', label, 'at', pos)
-                    result += 1
-                    self.mark_deleted(pos)
+        start_pos = 0
+        for pos in self.gen_next_match(start_pos, type=AnyOf(CC.JUMP, CC.IF_JUMP)):
+            start_pos = pos
+            label = self.codes[pos]['label']
+            # check if there is any 'non-noop' code between the jump and its label
+            # (keep in mind that the label may be before the jump)
+            start = min(pos, self.labels[label])
+            stop = max(pos, self.labels[label])
+            try:
+                op_pos = self.gen_next_match(start, stop, negate=True, type=self.NOOPS).next()
+            except StopIteration:
+                debug('skipping', self.codes[pos].get('op', 'jmp'), 'to', label, 'at', pos)
+                result += 1
+                self.mark_deleted(pos)
         return result
 
     def del_unused_labels(self, **kwargs):
@@ -238,6 +255,138 @@ class LatteOptimizer(object):
             return 1
         return 0
 
+    def propagate_constants(self, **kwargs):
+        """ Propagate constants moved to registers to the place where they're used. """
+        # Note: some codes, e.g. division, require arguments in registers.
+        # After deleting a [mov const, reg], hold the const value in pocket and paste it into all
+        # reg occurences until it's assigned something else.
+        # Note: remember to empty your pockets when jumping :) (and calling)
+        # In particular: before a label or jump assign the value to the register anyway.
+        # TODO this can be sometimes avoided if we consider the whole jump graph and live vars...
+        # Also remember that division requires both arguments in registers.
+        # For result, count when a register is replaced with a value from pocket.
+        # TODO another level: propagate up operators and if_jumps if both operands are constants.
+        self.print_codes()
+        result = 0
+        pocket = {}
+        apply_needed = False
+        for pos in code_iter(self.codes):
+            code = self.codes[pos]
+            if len(pocket):
+                # [0] On integer division, drop the first operand back to %eax and second to src.
+                # Also, invalidate %eax and %edx values in pocket as idivl stores result there.
+                if code['type'] == CC.DIV:
+                    dropped = {reg: val for reg, val in pocket.iteritems()
+                               if reg in [Loc.reg('a'), code['src']]}
+                    debug('div instruction at %d, applying regs %s' % (
+                        pos, str(map(str, dropped.keys()))))
+                    if len(dropped):
+                        self._add_to_apply_pocket(pos, dropped)
+                        apply_needed = True
+                    for reg in [Loc.reg('a'), Loc.reg('d')]:
+                        if reg in pocket:
+                            del pocket[reg]
+                    continue
+                # [1] Apply values from pocket first, in case of e.g. [mov $1 %eax, mov %eax %edx].
+                # Only attrs 'src', 'lhs' can use a const value.
+                for attr in set(['src', 'lhs']).intersection(code.keys()):
+                    if not code[attr].is_reg() or code[attr] not in pocket:
+                        continue
+                    debug('attr %s is reg %s at %d, applying %s from pocket' % (
+                        attr, code[attr].value, pos, pocket[code[attr]].value))
+                    code[attr] = pocket[code[attr]]
+                    result += 1
+                # [2] If a register is assigned something, delete its entry in pocket.
+                # Only attrs modifying their location are 'dest', 'rhs'.
+                # TODO hack note: 'rhs' needs to be reviewed *first*, in case both rhs and dest are
+                # the same register -- it would get deleted too early. Fix this when rewriting this
+                # ugly function.
+                for attr in reversed(sorted(set(['rhs', 'dest']).intersection(code.keys()))):
+                    if not code[attr].is_reg() or code[attr] not in pocket:
+                        continue
+                    value = pocket[code[attr]].value
+                    # NEG is a special case here: 'dest' is both source and destination -- but the
+                    # value remains constant, so remove the code and adjust value in pocket.
+                    if code['type'] == CC.NEG:
+                        new_value = value[1:] if '-' in value else '-' + value
+                        debug('NEG reg %s with const at %d, adjusting pocket value to %s' % (
+                            code[attr].value, pos, new_value))
+                        # Delete and re-insert value, to maintain hash properties.
+                        loc = pocket[code[attr]]
+                        del pocket[code[attr]]
+                        loc.value = new_value
+                        pocket[code[attr]] = loc
+                        self.mark_deleted(pos, comment=CC.S_PROPAGATED)
+                        result += 1
+                    else:  # otherwise, just forget the register's value from pocket.
+                        # but the right operand for cmpl also needs to be dropped.
+                        debug('reg %s is %s at %d, forgetting from pocket' % (
+                            code[attr].value, attr, pos))
+                        if attr == 'rhs' and code['type'] in [CC.IF_JUMP, CC.BOOL_OP]:
+                            self._add_to_apply_pocket(pos, {code['rhs']: pocket[code['rhs']]})
+                            apply_needed = True
+                            debug('   ^ but applying reg %s' % code['rhs'].value)
+                        del pocket[code[attr]]
+                # [3] On function call, empty the pocket.
+                if len(pocket) and code['type'] == CC.CALL:
+                    debug('function call at %d, emptying pocket' % pos)
+                    pocket = {}
+                # [4] On function exit, drop %eax and empty pocket.
+                if len(pocket) and code['type'] == CC.LEAVE:
+                    if Loc.reg('a') in pocket.keys():
+                        self._add_to_apply_pocket(pos, {Loc.reg('a'): pocket[Loc.reg('a')]})
+                        apply_needed = True
+                        debug('LEAVE at %d, dropping reg a' % pos)
+                    pocket = {}
+                # [5] On jump instructions (both in-/out-bound) assign the pocket values anyway.
+                if len(pocket) and code['type'] in [CC.JUMP, CC.IF_JUMP, CC.LABEL]:
+                    debug('%s at %d, reassigning pocket values' % (CC._code_name(code['type']),
+                                                                   pos))
+                    # We can't insert into a list while iterating, so save the pocket for now
+                    # TODO we could later skip at least some of pocket's values, if we check that
+                    # a value is the same at label and all jumps to it, or the register is not live.
+                    self._add_to_apply_pocket(pos, pocket.copy())
+                    apply_needed = True
+                    pocket = {}
+            # [6] Finally, when moving a constant to a register, stow it in the pocket instead.
+            #if code['type'] == CC.MOV:
+                #import ipdb; ipdb.set_trace() 
+            if (match(code, type=CC.MOV, src=self.CONST_LOCS, dest=Loc.reg(Loc.ANY)) and
+                    not match(code, comment=CC.S_PROPAGATED)):
+                debug('mov const %s -> reg %s found at %d' % (code['src'].value,
+                                                              code['dest'].value, pos))
+                #import ipdb; ipdb.set_trace() 
+                pocket[code['dest']] = code['src']
+                self.mark_deleted(pos, comment=CC.S_PROPAGATED)
+        # Turn the pocket indicators into assignments
+        if apply_needed:
+            self._insert_apply_pockets()
+        return result
+
+    def _add_to_apply_pocket(self, pos, pocket):
+        debug('  _add_to_apply_pocket at %d:' % pos)
+        for reg, val in pocket.iteritems():
+            debug('\t', reg.value, '->', val.value)
+        if 'apply_pocket' in self.codes[pos]:
+            self.codes[pos]['apply_pocket'].update(pocket)
+        else:
+            self.codes[pos]['apply_pocket'] = pocket
+
+    def _insert_apply_pockets(self):
+        """ Child function of propagate_constants, used to insert assignments before pocket
+        indicators, because they can't be inserted before when iterating through the list. """
+        start_pos = 0
+        debug('APPLY POCKETS')
+        for pos in self.gen_next_match(start_pos, attrlist=['apply_pocket']):
+            # Generate the move instructions and insert them inside codes list.
+            moves = map(lambda (reg, val): CC.mkcode(CC.MOV, src=val, dest=reg,
+                                                     comment=CC.S_PROPAGATED),
+                        self.codes[pos]['apply_pocket'].iteritems())
+            debug('apply pocket: insert %d moves at %d' % (len(moves), pos))
+            del self.codes[pos]['apply_pocket']
+            self.codes[pos:pos] = moves
+            start_pos = pos + len(moves) - 1
+
 
 def match(code, attrlist=[], negate=False, **kwargs):
     """ Return True if given code matches the specification:
@@ -252,13 +401,16 @@ def match(code, attrlist=[], negate=False, **kwargs):
         if attr not in code:
             return False
     for key, value in kwargs.iteritems():
-        if isinstance(value, tuple):  # a tuple of values that can match
-            if key not in code or code[key] not in value:
-                return False
-        else:  # a single value that must match
-            if key not in code or code[key] != value:
-                return False
+        if key not in code or code[key] != value:
+            return False
     return True
+
+
+# TODO remove after debugging
+def _match_multi(a, b):
+    result = a == b
+    #debug('_match_multi', result, 'a:', str(a), 'b:', str(b))
+    return result
 
 
 def code_spec(attrlist=[], **kwargs):
@@ -266,7 +418,7 @@ def code_spec(attrlist=[], **kwargs):
     return (attrlist, kwargs)
 
 
-def code_iter(codes, start_pos, end_pos=None):
+def code_iter(codes, start_pos=0, end_pos=None):
     """ Generator that yields all the codes in range that are not marked DELETED. """
     for pos in xrange(start_pos, end_pos or len(codes)):
         if not match(codes[pos], type=CC.DELETED):

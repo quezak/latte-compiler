@@ -37,13 +37,14 @@ class Codes(object):
     DELETED = 93  # assigned by optimizer to deleted actions (because deleting from list is linear)
 
     # String constants (to avoid typos)
-    S_UNUSED_RESULT = 'unused result'
+    S_UNUSED_RESULT = 'unused result'  # to mark stack pops of unused data
+    S_PROPAGATED = 'propagated'  # to mark propagated constants assigned back before a jump
 
     _CODE_NAMES = {
         0: ['PUSH', 'POP', 'MOV'],
         1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'ENTER', 'LEAVE'],
         2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP'],
-        9: ['CHILD', 'ASM', 'EMPTY'],
+        9: ['CHILD', 'ASM', 'EMPTY', 'DELETED'],
     }
 
     @classmethod
@@ -254,6 +255,8 @@ class Loc(object):
                     return '%esp'
                 if r in ['edi', 'esi', 'ebp']:
                     return '%' + r
+                if r == self.ANY:
+                    return r  # TODO remove after debugging
                 raise InternalError('invalid register name: `%s`' % r)
             if case(self.MEM):
                 return self.value
@@ -277,3 +280,10 @@ class Loc(object):
 
     def is_constant(self):
         return self.type == self.CONST or self.type == self.STRINGLIT
+
+    def is_reg(self):
+        return self.type == self.REG
+
+    def __hash__(self):
+        # warning: this class should not be hashable. Remember to not edit instances in a dict.
+        return hash(str(self))
