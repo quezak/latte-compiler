@@ -234,10 +234,12 @@ class BlockCode(StmtCode):
         return self
 
     def gen_code(self, **kwargs):
+        self.add_instr(CC.SCOPE, tree=self)
         for child in self.children:
             self.add_child_code(child)
         fun = self.get_cur_fun()
         fun.used_vars -= self.var_count  # free local variables as the context is closed
+        self.add_instr(CC.ENDSCOPE, tree=self)
 
 
 # declaration ###################################################################################

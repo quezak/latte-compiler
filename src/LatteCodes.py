@@ -4,7 +4,7 @@
 transformation to assembly. """
 
 from LatteErrors import InternalError
-from Utils import switch
+from Utils import switch, Flags
 
 
 # code tokens ###################################################################################
@@ -37,6 +37,8 @@ class Codes(object):
     ASM = 91  # used for all special asm lines like .file, .text, .string, .globl, etc
     EMPTY = 92  # empty output line, just to improve assembly readability
     DELETED = 93  # assigned by optimizer to deleted actions (because deleting from list is linear)
+    SCOPE = 94  # special token to annotate scope beginning
+    ENDSCOPE = 95
 
     # String constants (to avoid typos)
     S_UNUSED_RESULT = 'unused result'  # to mark stack pops of unused data
@@ -46,7 +48,7 @@ class Codes(object):
         0: ['PUSH', 'POP', 'MOV'],
         1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'FUNC', 'ENDFUNC'],
         2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP'],
-        9: ['CHILD', 'ASM', 'EMPTY', 'DELETED'],
+        9: ['CHILD', 'ASM', 'EMPTY', 'DELETED', 'SCOPE', 'ENDSCOPE'],
     }
 
     @classmethod
@@ -100,6 +102,8 @@ class Codes(object):
         for code in code_list:
             for line in cls._asm_instr(code):
                 yield line
+
+    _scope_depth = 0
 
     @classmethod
     def _asm_instr(cls, code):
@@ -169,10 +173,21 @@ class Codes(object):
             if case(cls.EMPTY):
                 yield ''
                 return
-            if case(cls.DELETED):  # TODO remove this, DELETED codes should be really deleted
-                d = code.copy()
-                del d['type']
-                yield '\t# [deleted] ' + cls._str_code(d)
+            if case(cls.DELETED):
+                if Flags.debug:
+                    d = code.copy()
+                    del d['type']
+                    yield '\t# [deleted] ' + cls._str_code(d)
+                return
+            if case(cls.SCOPE):
+                if Flags.debug:
+                    yield '# ' + (' ' * cls._scope_depth * 2) + '{'
+                    cls._scope_depth += 1
+                return
+            if case(cls.ENDSCOPE):
+                if Flags.debug:
+                    cls._scope_depth -= 1
+                    yield '# ' + (' ' * cls._scope_depth * 2) + '}'
                 return
             if case(cls.CHILD):
                 raise InternalError('code type %s not allowed here', cls._code_name(code['type']))
