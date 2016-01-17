@@ -344,11 +344,11 @@ class LatteOptimizer(object):
                     debug('function call at %d, emptying pocket' % pos)
                     pocket = {}
                 # [4] On function exit, drop %eax and empty pocket.
-                if len(pocket) and code['type'] == CC.LEAVE:
+                if len(pocket) and code['type'] == CC.ENDFUNC:
                     if Loc.reg('a') in pocket.keys():
                         self._add_to_apply_pocket(pos, {Loc.reg('a'): pocket[Loc.reg('a')]})
                         apply_needed = True
-                        debug('LEAVE at %d, dropping reg a' % pos)
+                        debug('ENDFUNC at %d, dropping reg a' % pos)
                     pocket = {}
                 # [5] On jump instructions (both in-/out-bound) assign the pocket values anyway.
                 if len(pocket) and code['type'] in [CC.JUMP, CC.IF_JUMP, CC.LABEL]:

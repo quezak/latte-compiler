@@ -23,8 +23,8 @@ class Codes(object):
     IF_JUMP = 11  # all kinds of conditional jumps
     LABEL = 12
     CALL = 13
-    ENTER = 14  # standard function prologue, not the asm 'enter' instruction
-    LEAVE = 15  # standard function epilogue: asm 'leave' and 'ret'
+    FUNC = 14  # function start: asm annotations, label, prologue, stack space for local vars
+    ENDFUNC = 15  # standard function epilogue: pop local vars, asm 'leave' and 'ret'
 
     ADD = 20
     SUB = 21
@@ -44,7 +44,7 @@ class Codes(object):
 
     _CODE_NAMES = {
         0: ['PUSH', 'POP', 'MOV'],
-        1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'ENTER', 'LEAVE'],
+        1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'FUNC', 'ENDFUNC'],
         2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP'],
         9: ['CHILD', 'ASM', 'EMPTY', 'DELETED'],
     }
@@ -77,7 +77,8 @@ class Codes(object):
          * dest: Loc containing location where result will be stored (so it will *not* be read)
          * label: plaintext name of a label (for jumps, calls and label placement)
          * parts: special arg for the ASM code, contains the asm line to output as a list of words
-         * comment: if present, will be appended to the output assembly line. """
+         * comment: if present, will be appended to the output assembly line
+         * tree: the corresponding LatteCode object, passed to FUNC and ENDFUNC for convenience. """
         d = kwargs.copy()
         d['type'] = type
         return d
@@ -126,15 +127,25 @@ class Codes(object):
             if case(cls.CALL):
                 yield cls._str_asm('call', [code['label']], code)
                 return
-            if case(cls.ENTER):
+            if case(cls.FUNC):
+                # asm declaration
+                yield cls._str_asm('.globl', [code['label']], code)
+                yield cls._str_asm('.type', [code['label'], '@function'], code)
+                # function label
+                yield cls._str_asm(code['label'] + ':', [], code)
+                # standard prologue
                 yield cls._str_asm('pushl', ['%ebp'], code)
                 yield cls._str_asm('movl', ['%esp', '%ebp'], code)
-                var_space = Loc.const((code['var_count'] + 1) * cls.var_size)
-                yield cls._str_asm('subl', [str(var_space), '%esp'], code)
+                if code['tree'].var_count:
+                    var_space = Loc.const((code['tree'].var_count) * cls.var_size)
+                    yield cls._str_asm('subl', [str(var_space), '%esp'], code)
                 return
-            if case(cls.LEAVE):
+            if case(cls.ENDFUNC):
+                if code['tree'].var_count:
+                    var_space = Loc.const((code['tree'].var_count) * cls.var_size)
+                    yield cls._str_asm('addl', [str(var_space), '%esp'], code)
                 yield cls._str_asm('leave', [], code)
-                yield cls._str_asm('ret', [], code)
+                yield cls._str_asm('ret', [], {'comment': 'function ' + code['label']})
                 return
             if case(cls.ADD, cls.SUB, cls.MUL):
                 op = {cls.ADD: 'addl', cls.SUB: 'subl', cls.MUL: 'imull'}[code['type']]

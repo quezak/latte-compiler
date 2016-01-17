@@ -126,16 +126,10 @@ class FunCode(LatteCode):
         return self.used_vars - 1
 
     def gen_code(self, **kwargs):
-        self.add_asm_instr(['.globl', self.name])
-        self.add_asm_instr(['.type', self.name, '@function'])
-        self.add_instr(CC.LABEL, label=self.name)
-        # prologue
-        self.add_instr(CC.ENTER, var_count=self.var_count)
-        # insert block
+        self.add_instr(CC.FUNC, label=self.name, tree=self)
         self.add_child_by_idx(0)
-        # epilogue
         self.add_instr(CC.LABEL, label=self.ret_label)
-        self.add_instr(CC.LEAVE)
+        self.add_instr(CC.ENDFUNC, label=self.name, tree=self)
 
 
 # statement #####################################################################################
