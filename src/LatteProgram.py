@@ -193,13 +193,13 @@ class StmtCode(LatteCode):
                 self.add_child_by_idx(1)
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # put the value into destination address
-                dest_addr = self.tree.symbol(self.children[0].value).pos
-                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.mem(dest_addr))
+                dest_sym = self.tree.symbol(self.children[0].value)
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.sym(dest_sym))
                 break
             if case(LP.INCR, LP.DECR):
                 op = CC.ADD if self.type.type == LP.INCR else CC.SUB
-                addr = self.tree.symbol(self.children[0].value).pos
-                self.add_instr(op, lhs=Loc.const(1), rhs=Loc.mem(addr))
+                sym = self.tree.symbol(self.children[0].value)
+                self.add_instr(op, lhs=Loc.const(1), rhs=Loc.sym(sym))
                 break
             if case():
                 raise NotImplementedError('unknown statement type: %s' % str(self.type))
@@ -266,14 +266,15 @@ class DeclCode(StmtCode):
         # For each declared item, compute its address on stack (and assign the value if needed).
         for item in self.items:
             addr = Loc.var_addr(fun.next_var_num())
+            sym = Symbol(item.name, self.decl_type.type, addr)
             if item.expr:
                 self.add_child_by_idx(item.expr_child_idx)
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
-                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.mem(addr))
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.sym(sym))
             # Important: we add symbol containing the new var's address *after* assigned expression
             # is evaluated (because of e.g. int i = i+7); but still inside the loop -- so next
             # declarations use the new symbol.
-            block.tree.add_symbol(Symbol(item.name, self.decl_type.type, addr))
+            block.tree.add_symbol(sym)
 
 
 # expression ####################################################################################
@@ -324,7 +325,7 @@ class LiteralCode(ExprCode):
                     self.add_instr(CC.JUMP, label=label)
                     break
                 if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
-                    self.add_instr(CC.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
+                    self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
                                    dest=Loc.reg('a'))
                     # note: comparing with 0, so on equality jump to false!
                     self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
@@ -340,7 +341,7 @@ class LiteralCode(ExprCode):
                 self.add_instr(CC.PUSH, src=Loc.const(self.value))
                 break
             if case(LP.IDENT):
-                self.add_instr(CC.MOV, src=Loc.mem(self.tree.symbol(self.value).pos),
+                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
                                dest=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break

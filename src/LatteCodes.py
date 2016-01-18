@@ -262,6 +262,12 @@ class Loc(object):
         return cls(cls.MEM, cls.mkaddr(addr, offset))
 
     @classmethod
+    def sym(cls, symbol):
+        loc = cls.mem(symbol.pos)
+        loc.sym = symbol
+        return loc
+
+    @classmethod
     def stringlit(cls, obj):
         if obj == cls.ANY:
             return cls(cls.STRINGLIT, cls.ANY)
