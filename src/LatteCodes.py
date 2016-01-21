@@ -156,8 +156,14 @@ class Codes(object):
                 yield cls._str_asm(op, [str(code['lhs']), str(code['rhs'])], code)
                 return
             if case(cls.DIV):
+                if not code['rhs'].is_reg() or code['rhs'].value in ['a', 'd']:
+                    # the second operand must be in a register other than %eax, %edx
+                    yield cls._str_asm('movl', [str(code['rhs']), str(Loc.reg('c'))], code)
+                    code['rhs'] = Loc.reg('c')
+                if code['lhs'] != Loc.reg('a'):  # the first operand must be in %eax
+                    yield cls._str_asm('movl', [str(code['lhs']), str(Loc.reg('a'))], code)
                 yield cls._str_asm('cdq', [], code)
-                yield cls._str_asm('idivl', [str(code['lhs'])], code)
+                yield cls._str_asm('idivl', [str(code['rhs'])], code)
                 return
             if case(cls.NEG):
                 yield cls._str_asm('negl', [str(code['rhs'])], code)

@@ -48,12 +48,13 @@ class LatteOptimizer(object):
             self.run_opt(self.del_unused_labels)
             self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
             self.run_opt(self.propagate_constants)
-            self.run_opt(self.clear_deleted_codes)
+            #self.run_opt(self.clear_deleted_codes)
             if sum(self.opt_counters.values()) == sum_counters:
                 debug('------------------ all optimizations returned finish -----------------')
                 break
         # TODO don't assign dead vars
         # TODO free string memory
+        # TODO [mov mem regA, mov regA regB]
         if Flags.optimizer_summary:
             Status.add_note(LatteError('optimizer case counters:'))
             for name, count in self.opt_counters.iteritems():
@@ -259,20 +260,6 @@ class LatteOptimizer(object):
         for pos in self.matcher.code_iter():
             code = self.codes[pos]
             if len(pocket):
-                # [0] On integer division, drop the first operand back to %eax and second to src.
-                # Also, invalidate %eax and %edx values in pocket as idivl stores result there.
-                if code['type'] == CC.DIV:
-                    dropped = {reg: val for reg, val in pocket.iteritems()
-                               if reg in [Loc.reg('a'), code['lhs']]}
-                    debug('div instruction at %d, applying regs %s' % (
-                        pos, str(map(str, dropped.keys()))))
-                    if len(dropped):
-                        self._add_to_apply_pocket(pos, dropped)
-                        apply_needed = True
-                    for reg in [Loc.reg('a'), Loc.reg('d')]:
-                        if reg in pocket:
-                            del pocket[reg]
-                    continue
                 # [1] Apply values from pocket first, in case of e.g. [mov $1 %eax, mov %eax %edx].
                 # Only attrs 'src', 'lhs' can use a const value.
                 for attr in [a for a in ['src', 'lhs'] if a in code.keys()]:
@@ -333,7 +320,13 @@ class LatteOptimizer(object):
                     self._add_to_apply_pocket(pos, pocket.copy())
                     apply_needed = True
                     pocket = {}
-            # [6] Finally, when moving a constant to a register, stow it in the pocket instead.
+                # [6] On integer division, invalidate %eax and %edx values in pocket as idivl stores
+                # results there.
+                if code['type'] == CC.DIV:
+                    for reg in [Loc.reg('a'), Loc.reg('d')]:
+                        if reg in pocket:
+                            del pocket[reg]
+            # [7] Finally, when moving a constant to a register, stow it in the pocket instead.
             if (self.matcher.match(code, type=CC.MOV, src=self.CONST_LOCS,
                                    dest=Loc.reg(Loc.ANY)) and
                     not self.matcher.match(code, comment=CC.S_PROPAGATED)):
