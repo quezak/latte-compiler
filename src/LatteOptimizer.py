@@ -27,8 +27,8 @@ class LatteOptimizer(object):
     CONST_LOCS = AnyOf(Loc.const(Loc.ANY), Loc.stringlit(Loc.ANY))
     # Binary operators that have a result.
     BIN_OPS = AnyOf(CC.ADD, CC.SUB, CC.MUL, CC.DIV, CC.MOD)
-    # Matcher for all constants.
-    ANY_CONST = Loc.const(Loc.ANY)
+    # Const matcher for constant propagation.
+    CONST_OR_REG = AnyOf(Loc.const(Loc.ANY), Loc.reg(Loc.ANY))
 
     def __init__(self, codes):
         self.codes = codes
@@ -313,15 +313,23 @@ class LatteOptimizer(object):
         """ Constant propagation for operators: if both operands are consts, calculate the result
         and propagate it instead."""
         # TODO extend to bool ops and string concatenation
+        # 'lhs' and 'rhs' are both registers with values stored in pocket, or only 'rhs' is and
+        # 'lhs' is an actual constant (e.g. propagated there in previous loop iteration, when 'rhs'
+        # was not yet propagated).
         if (self.matcher.match(
-                code, type=self.BIN_OPS, lhs=Loc.reg(Loc.ANY), rhs=Loc.reg(Loc.ANY)) and
-                code['lhs'] in self.pocket and code['rhs'] in self.pocket):
+                code, type=self.BIN_OPS, lhs=self.CONST_OR_REG, rhs=Loc.reg(Loc.ANY)) and
+                (code['lhs'].is_constant() or code['lhs'] in self.pocket) and
+                code['rhs'] in self.pocket):
             debug('two-const operator %s at %d' % (CC._code_name(code['type']), pos))
             op_fun = {
                 CC.ADD: operator.add, CC.SUB: operator.sub,
                 CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
             }[code['type']]
-            arg1, arg2 = int(self.pocket[code['rhs']].value), int(self.pocket[code['lhs']].value)
+            arg1 = int(self.pocket[code['rhs']].value)
+            if code['lhs'].is_constant():
+                arg2 = int(code['lhs'].value)
+            else:
+                arg2 = int(self.pocket[code['lhs']].value)
             res_val = op_fun(arg1, arg2)
             debug('   -> args %d, %d res %d' % (arg1, arg2, res_val))
             res_reg = code['dest'] if code['type'] in [CC.DIV, CC.MOD] else code['rhs']
