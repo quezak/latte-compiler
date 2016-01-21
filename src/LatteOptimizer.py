@@ -26,7 +26,7 @@ class LatteOptimizer(object):
     # All locations considered constant.
     CONST_LOCS = AnyOf(Loc.const(Loc.ANY), Loc.stringlit(Loc.ANY))
     # Binary operators that have a result.
-    BIN_OPS = AnyOf(CC.ADD, CC.SUB, CC.MUL, CC.DIV, CC.MOD)
+    BIN_OPS = AnyOf(CC.ADD, CC.SUB, CC.MUL, CC.DIV, CC.MOD, CC.BOOL_OP)
     # Const matcher for constant propagation.
     CONST_OR_REG = AnyOf(Loc.const(Loc.ANY), Loc.reg(Loc.ANY))
 
@@ -52,7 +52,6 @@ class LatteOptimizer(object):
             self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
             self.run_opt(self.del_unused_labels)
             self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
-            self.print_codes()
             self.run_opt(self.propagate_constants)
             #self.run_opt(self.clear_deleted_codes)
             if sum(self.opt_counters.values()) == sum_counters:
@@ -271,6 +270,7 @@ class LatteOptimizer(object):
                 # functions. Any of those functions can return True to indicate that the code no
                 # longer needs to be considered for propagation (e.g. was deleted), and the
                 # iteration will step over to the next code.
+                # TODO two const in IF_JUMP
                 if (self._cp_two_const_operator(pos, code) or
                         self._cp_apply_value_from_pocket(pos, code) or
                         self._cp_overwrite_pocket_values(pos, code) or
@@ -312,7 +312,7 @@ class LatteOptimizer(object):
     def _cp_two_const_operator(self, pos, code):
         """ Constant propagation for operators: if both operands are consts, calculate the result
         and propagate it instead."""
-        # TODO extend to bool ops and string concatenation
+        # TODO extend to string concatenation
         # 'lhs' and 'rhs' are both registers with values stored in pocket, or only 'rhs' is and
         # 'lhs' is an actual constant (e.g. propagated there in previous loop iteration, when 'rhs'
         # was not yet propagated).
@@ -321,10 +321,19 @@ class LatteOptimizer(object):
                 (code['lhs'].is_constant() or code['lhs'] in self.pocket) and
                 code['rhs'] in self.pocket):
             debug('two-const operator %s at %d' % (CC._code_name(code['type']), pos))
-            op_fun = {
-                CC.ADD: operator.add, CC.SUB: operator.sub,
-                CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
-            }[code['type']]
+            if code['type'] == CC.BOOL_OP:
+                cmp_fun = {
+                    'sete': operator.eq, 'setne': operator.ne,
+                    'setg': operator.gt, 'setge': operator.ge,
+                    'setl': operator.lt, 'setle': operator.le,
+                }[code['op']]
+                # The operator.* bool functions return bool, we want an int to push.
+                op_fun = lambda x, y: int(cmp_fun(x, y))
+            else:
+                op_fun = {
+                    CC.ADD: operator.add, CC.SUB: operator.sub,
+                    CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
+                }[code['type']]
             arg1 = int(self.pocket[code['rhs']].value)
             if code['lhs'].is_constant():
                 arg2 = int(code['lhs'].value)

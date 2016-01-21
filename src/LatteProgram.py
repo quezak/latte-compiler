@@ -444,14 +444,16 @@ class BinopCode(ExprCode):
                 # part of condition evaluation -- select the conditional jump instruction
                 self.label_true = kwargs['on_true']
                 self.label_false = kwargs['on_false']
-                jmp_code = {LP.EQ: 'je', LP.NEQ: 'jne', LP.GT: 'jg', LP.GEQ: 'jge',
+                jmp_code = {LP.EQ: 'je', LP.NEQ: 'jne',
+                            LP.GT: 'jg', LP.GEQ: 'jge',
                             LP.LT: 'jl', LP.LEQ: 'jle', }[self.type.type]
                 self.add_instr(CC.IF_JUMP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=jmp_code, label=self.label_true)
                 self.add_instr(CC.JUMP, label=self.label_false)
             else:
                 # expression returning bool -- select the comparision set instruction
-                set_code = {LP.EQ: 'sete', LP.NEQ: 'setne', LP.GT: 'setg', LP.GEQ: 'setge',
+                set_code = {LP.EQ: 'sete', LP.NEQ: 'setne',
+                            LP.GT: 'setg', LP.GEQ: 'setge',
                             LP.LT: 'setl', LP.LEQ: 'setle', }[self.type.type]
                 self.add_instr(CC.BOOL_OP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=set_code, dest=Loc.reg('a'))
