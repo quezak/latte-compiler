@@ -52,6 +52,7 @@ class LatteOptimizer(object):
             self.run_opt(self.del_jumps_to_next, max_passes=self.INF_PASSES)
             self.run_opt(self.del_unused_labels)
             self.run_opt(self.reduce_push_pop, max_passes=self.INF_PASSES)
+            self.print_codes()
             self.run_opt(self.propagate_constants)
             #self.run_opt(self.clear_deleted_codes)
             if sum(self.opt_counters.values()) == sum_counters:
@@ -259,120 +260,36 @@ class LatteOptimizer(object):
         # Also remember that division requires both arguments in registers.
         # For result, count when a register is replaced with a value from pocket.
         # TODO another level: propagate if_jumps if both operands are constants.
-        result = 0
-        pocket = {}
-        apply_needed = False
+        self.prop_consts = 0
+        self.pocket = {}
+        self.apply_needed = False
         for pos in self.matcher.code_iter():
             code = self.codes[pos]
-            if len(pocket):
-                # [0] If both operands are consts, calculate the result and propagate it instead.
-                # TODO extend to bool ops and string concatenation
-                if (self.matcher.match(
-                        code, type=self.BIN_OPS, lhs=Loc.reg(Loc.ANY), rhs=Loc.reg(Loc.ANY)) and
-                        code['lhs'] in pocket and code['rhs'] in pocket):
-                    debug('two-const operator %s at %d' % (CC._code_name(code['type']), pos))
-                    op_fun = {
-                        CC.ADD: operator.add, CC.SUB: operator.sub,
-                        CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
-                    }[code['type']]
-                    res_val = op_fun(int(pocket[code['rhs']].value), int(pocket[code['lhs']].value))
-                    debug('   -> args %d, %d res %d' % (int(pocket[code['rhs']].value),
-                                                        int(pocket[code['lhs']].value), res_val))
-                    res_reg = code['dest'] if code['type'] in [CC.DIV, CC.MOD] else code['rhs']
-                    # Delete and re-insert value, to maintain hash properties.
-                    if res_reg in pocket:
-                        del pocket[res_reg]
-                    pocket[res_reg] = Loc.const(res_val)
-                    self.mark_deleted(pos, comment=CC.S_PROPAGATED, value=res_val)
-                    result += 1
+            if len(self.pocket):
+                # For readability, the subsequent cases of constant propagation are in separate
+                # functions. Any of those functions can return True to indicate that the code no
+                # longer needs to be considered for propagation (e.g. was deleted), and the
+                # iteration will step over to the next code.
+                if (self._cp_two_const_operator(pos, code) or
+                        self._cp_apply_value_from_pocket(pos, code) or
+                        self._cp_overwrite_pocket_values(pos, code) or
+                        self._cp_empty_pocket_if_needed(pos, code)):
                     continue
-                # [1] Apply values from pocket first, in case of e.g. [mov $1 %eax, mov %eax %edx].
-                # Only attrs 'src', 'lhs' can use a const value.
-                for attr in [a for a in ['src', 'lhs'] if a in code.keys()]:
-                    if not code[attr].is_reg() or code[attr] not in pocket:
-                        continue
-                    debug('attr %s is reg %s at %d, applying %s from pocket' % (
-                        attr, code[attr].value, pos, pocket[code[attr]].value))
-                    code[attr] = pocket[code[attr]]
-                    result += 1
-                # [2] If a register is assigned something, delete its entry in pocket.
-                # Only attrs modifying their location are 'dest', 'rhs'.
-                # Note: rhs needs to be reviewed first, otherwise if rhs and dest are the same we
-                # would forget the pocket value at dest, while it is still needed by rhs.
-                for attr in [a for a in ['rhs', 'dest'] if a in code.keys()]:
-                    if not code[attr].is_reg() or code[attr] not in pocket:
-                        continue
-                    value = pocket[code[attr]].value
-                    # NEG is a special case here: 'dest' is both source and destination -- but the
-                    # value remains constant, so remove the code and adjust value in pocket.
-                    if code['type'] == CC.NEG:
-                        new_value = value[1:] if '-' in value else '-' + value
-                        debug('NEG reg %s with const at %d, adjusting pocket value to %s' % (
-                            code[attr].value, pos, new_value))
-                        # Delete and re-insert value, to maintain hash properties.
-                        loc = pocket[code[attr]]
-                        del pocket[code[attr]]
-                        loc.value = new_value
-                        pocket[code[attr]] = loc
-                        self.mark_deleted(pos, comment=CC.S_PROPAGATED)
-                        result += 1
-                    else:  # otherwise, just forget the register's value from pocket.
-                        # but the right operand for cmpl also needs to be dropped.
-                        debug('reg %s is %s at %d, forgetting from pocket' % (
-                            code[attr].value, attr, pos))
-                        if attr == 'rhs':
-                            self._add_to_apply_pocket(pos, {code['rhs']: pocket[code['rhs']]})
-                            apply_needed = True
-                            debug('   ^ but applying reg %s' % code['rhs'].value)
-                        del pocket[code[attr]]
-                # [3] On function call, empty the pocket.
-                if len(pocket) and code['type'] == CC.CALL:
-                    debug('function call at %d, emptying pocket' % pos)
-                    pocket = {}
-                # [4] On function exit, drop %eax and empty pocket.
-                if len(pocket) and code['type'] == CC.ENDFUNC:
-                    if Loc.reg('a') in pocket.keys():
-                        self._add_to_apply_pocket(pos, {Loc.reg('a'): pocket[Loc.reg('a')]})
-                        apply_needed = True
-                        debug('ENDFUNC at %d, dropping reg a' % pos)
-                    pocket = {}
-                # [5] On jump instructions (both in-/out-bound) assign the pocket values anyway.
-                if len(pocket) and code['type'] in [CC.JUMP, CC.IF_JUMP, CC.LABEL]:
-                    debug('%s at %d, reassigning pocket values' % (CC._code_name(code['type']),
-                                                                   pos))
-                    # We can't insert into a list while iterating, so save the pocket for now
-                    # TODO we could later skip at least some of pocket's values, if we check that
-                    # a value is the same at label and all jumps to it, or the register is not live.
-                    self._add_to_apply_pocket(pos, pocket.copy())
-                    apply_needed = True
-                    pocket = {}
-                # [6] On integer division, invalidate %eax and %edx values in pocket as idivl stores
-                # results there.
-                if code['type'] == CC.DIV:
-                    for reg in [Loc.reg('a'), Loc.reg('d')]:
-                        if reg in pocket:
-                            del pocket[reg]
-            # [7] Finally, when moving a constant to a register, stow it in the pocket instead.
-            if (self.matcher.match(code, type=CC.MOV, src=self.CONST_LOCS,
-                                   dest=Loc.reg(Loc.ANY)) and
-                    not self.matcher.match(code, comment=CC.S_PROPAGATED)):
-                debug('mov const %s -> reg %s found at %d' % (code['src'].value,
-                                                              code['dest'].value, pos))
-                pocket[code['dest']] = code['src']
-                self.mark_deleted(pos, comment=CC.S_PROPAGATED)
+            self._cp_save_to_pocket(pos, code)
         # Turn the pocket indicators into assignments
-        if apply_needed:
+        if self.apply_needed:
             self._insert_apply_pockets()
-        return result
+        return self.prop_consts
 
-    def _add_to_apply_pocket(self, pos, pocket):
+    def _add_to_apply_pocket(self, pos, a_pocket):
         debug('  _add_to_apply_pocket at %d:' % pos)
-        for reg, val in pocket.iteritems():
+        for reg, val in a_pocket.iteritems():
             debug('\t', reg.value, '->', val.value)
         if 'apply_pocket' in self.codes[pos]:
-            self.codes[pos]['apply_pocket'].update(pocket)
+            self.codes[pos]['apply_pocket'].update(a_pocket)
         else:
-            self.codes[pos]['apply_pocket'] = pocket
+            self.codes[pos]['apply_pocket'] = a_pocket
+        self.apply_needed = True
 
     def _insert_apply_pockets(self):
         """ Child function of propagate_constants, used to insert assignments before pocket
@@ -390,6 +307,112 @@ class LatteOptimizer(object):
             start_pos = pos + len(moves) - 1
         # rebuild the jump maps
         self.scan_labels()
+
+    def _cp_two_const_operator(self, pos, code):
+        """ Constant propagation for operators: if both operands are consts, calculate the result
+        and propagate it instead."""
+        # TODO extend to bool ops and string concatenation
+        if (self.matcher.match(
+                code, type=self.BIN_OPS, lhs=Loc.reg(Loc.ANY), rhs=Loc.reg(Loc.ANY)) and
+                code['lhs'] in self.pocket and code['rhs'] in self.pocket):
+            debug('two-const operator %s at %d' % (CC._code_name(code['type']), pos))
+            op_fun = {
+                CC.ADD: operator.add, CC.SUB: operator.sub,
+                CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
+            }[code['type']]
+            arg1, arg2 = int(self.pocket[code['rhs']].value), int(self.pocket[code['lhs']].value)
+            res_val = op_fun(arg1, arg2)
+            debug('   -> args %d, %d res %d' % (arg1, arg2, res_val))
+            res_reg = code['dest'] if code['type'] in [CC.DIV, CC.MOD] else code['rhs']
+            # Delete and re-insert value, to maintain hash properties.
+            if res_reg in self.pocket:
+                del self.pocket[res_reg]
+            self.pocket[res_reg] = Loc.const(res_val)
+            self.mark_deleted(pos, comment=CC.S_PROPAGATED, value=res_val)
+            self.prop_consts += 1
+            return True
+
+    def _cp_apply_value_from_pocket(self, pos, code):
+        """ Constant propagation: apply values from pocket. To be used before assigning new values,
+        in case of e.g. [mov $1 %eax, mov %eax %edx]."""
+        # Only attrs 'src', 'lhs' can carry a const value.
+        for attr in [a for a in ['src', 'lhs'] if a in code.keys()]:
+            if not code[attr].is_reg() or code[attr] not in self.pocket:
+                continue
+            debug('attr %s is reg %s at %d, applying %s from pocket' % (
+                attr, code[attr].value, pos, self.pocket[code[attr]].value))
+            code[attr] = self.pocket[code[attr]]
+            self.prop_consts += 1
+
+    def _cp_overwrite_pocket_values(self, pos, code):
+        """ Constant propagation: if a register is being assigned, delete its entry in pocket."""
+        # Only attrs modifying their location are 'dest', 'rhs'.
+        # Note: rhs needs to be reviewed first, otherwise if rhs and dest are the same we
+        # would forget the pocket value at dest, while it is still needed by rhs.
+        for attr in [a for a in ['rhs', 'dest'] if a in code.keys()]:
+            if not code[attr].is_reg() or code[attr] not in self.pocket:
+                continue
+            value = self.pocket[code[attr]].value
+            # NEG is a special case here: 'dest' is both source and destination -- but the
+            # value remains constant, so remove the code and adjust value in pocket.
+            if code['type'] == CC.NEG:
+                new_value = value[1:] if '-' in value else '-' + value
+                debug('NEG reg %s with const at %d, adjusting pocket value to %s' % (
+                    code[attr].value, pos, new_value))
+                # Delete and re-insert value, to maintain hash properties.
+                loc = self.pocket[code[attr]]
+                del self.pocket[code[attr]]
+                loc.value = new_value
+                self.pocket[code[attr]] = loc
+                self.mark_deleted(pos, comment=CC.S_PROPAGATED)
+                self.prop_consts += 1
+                return True
+            else:  # otherwise, just forget the register's value from pocket.
+                # but the right operand for cmpl also needs to be dropped.
+                debug('reg %s is %s at %d, forgetting from pocket' % (
+                    code[attr].value, attr, pos))
+                if attr == 'rhs':
+                    debug('   ^ but applying reg %s' % code['rhs'].value)
+                    self._add_to_apply_pocket(pos, {code['rhs']: self.pocket[code['rhs']]})
+                del self.pocket[code[attr]]
+        # Special case: division -- invalidate %eax and %edx values in pocket as idivl stores
+        # results there.
+        if code['type'] in [CC.DIV, CC.MOD]:
+            for reg in [Loc.reg('a'), Loc.reg('d')]:
+                if reg in self.pocket:
+                    del self.pocket[reg]
+
+    def _cp_empty_pocket_if_needed(self, pos, code):
+        """ Constant propagation: empty the pocket in case of calls or jumps. """
+        # [1] On function call, empty the pocket.
+        if len(self.pocket) and code['type'] == CC.CALL:
+            debug('function call at %d, emptying pocket' % pos)
+            self.pocket = {}
+        # [2] On function exit, drop %eax and empty pocket.
+        if len(self.pocket) and code['type'] == CC.ENDFUNC:
+            if Loc.reg('a') in self.pocket.keys():
+                self._add_to_apply_pocket(pos, {Loc.reg('a'): self.pocket[Loc.reg('a')]})
+                debug('ENDFUNC at %d, dropping reg a' % pos)
+            self.pocket = {}
+        # [3] On jump instructions (both in-/out-bound) assign the pocket values anyway.
+        if len(self.pocket) and code['type'] in [CC.JUMP, CC.IF_JUMP, CC.LABEL]:
+            debug('%s at %d, reassigning pocket values' % (CC._code_name(code['type']),
+                                                           pos))
+            # We can't insert into a list while iterating, so save the pocket for now
+            # TODO we could later skip at least some of pocket's values, if we check that
+            # a value is the same at label and all jumps to it, or the register is not live.
+            self._add_to_apply_pocket(pos, self.pocket.copy())
+            self.pocket = {}
+
+    def _cp_save_to_pocket(self, pos, code):
+        """ Constant propagation: when moving const to a register, stow it in the pocket instead."""
+        if (self.matcher.match(code, type=CC.MOV, src=self.CONST_LOCS,
+                               dest=Loc.reg(Loc.ANY)) and
+                not self.matcher.match(code, comment=CC.S_PROPAGATED)):
+            debug('mov const %s -> reg %s found at %d' % (code['src'].value,
+                                                          code['dest'].value, pos))
+            self.pocket[code['dest']] = code['src']
+            self.mark_deleted(pos, comment=CC.S_PROPAGATED)
 
 
 def c_modulo(a, b):
