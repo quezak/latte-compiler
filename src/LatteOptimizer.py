@@ -312,7 +312,6 @@ class LatteOptimizer(object):
     def _cp_two_const_operator(self, pos, code):
         """ Constant propagation for operators: if both operands are consts, calculate the result
         and propagate it instead."""
-        # TODO extend to string concatenation
         # 'lhs' and 'rhs' are both registers with values stored in pocket, or only 'rhs' is and
         # 'lhs' is an actual constant (e.g. propagated there in previous loop iteration, when 'rhs'
         # was not yet propagated).

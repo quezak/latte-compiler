@@ -492,9 +492,19 @@ class BinopCode(ExprCode):
         if self.type.type != LP.PLUS:
             raise InternalError('wrong string op type %s' % str(self.type))
         # only + (concatenation) for now
-        # add children in reversed order, so they are on stack ready to call the concat lib function
-        self.add_child_by_idx(1)
-        self.add_child_by_idx(0)
+        # If at least one operand is a constant or a variable, we can safely just push them in
+        # reversed order (for call to 'concatString' library function). Otherwise we need to
+        # evaluate them in the right order and then reverse them on stack.
+        if isinstance(self.children[0], LiteralCode) or isinstance(self.children[1], LiteralCode):
+            self.add_child_by_idx(1)
+            self.add_child_by_idx(0)
+        else:
+            self.add_child_by_idx(0)
+            self.add_child_by_idx(1)
+            self.add_instr(CC.POP, dest=Loc.reg('a'))
+            self.add_instr(CC.POP, dest=Loc.reg('d'))
+            self.add_instr(CC.PUSH, src=Loc.reg('a'))
+            self.add_instr(CC.PUSH, src=Loc.reg('d'))
         self.add_instr(CC.CALL, label=CC.strcat_function)
         self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
         self.add_instr(CC.PUSH, src=Loc.reg('a'))
