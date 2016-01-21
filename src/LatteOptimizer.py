@@ -5,6 +5,7 @@ optimizer loop, repeated a configured number of times. Uses CodeMatcher for matc
 to optimize. """
 
 from bisect import bisect_left
+import operator
 
 from CodeMatcher import CodeMatcher, AnyOf, code_spec
 from FuturePrint import debug
@@ -24,6 +25,10 @@ class LatteOptimizer(object):
     NO_STACK_OPS = AnyOf(CC.MOV, CC.ADD, CC.SUB, CC.MUL, CC.NEG)
     # All locations considered constant.
     CONST_LOCS = AnyOf(Loc.const(Loc.ANY), Loc.stringlit(Loc.ANY))
+    # Binary operators that have a result.
+    BIN_OPS = AnyOf(CC.ADD, CC.SUB, CC.MUL, CC.DIV, CC.MOD)
+    # Matcher for all constants.
+    ANY_CONST = Loc.const(Loc.ANY)
 
     def __init__(self, codes):
         self.codes = codes
@@ -253,13 +258,34 @@ class LatteOptimizer(object):
         # TODO this can be sometimes avoided if we consider the whole jump graph and live vars...
         # Also remember that division requires both arguments in registers.
         # For result, count when a register is replaced with a value from pocket.
-        # TODO another level: propagate up operators and if_jumps if both operands are constants.
+        # TODO another level: propagate if_jumps if both operands are constants.
         result = 0
         pocket = {}
         apply_needed = False
         for pos in self.matcher.code_iter():
             code = self.codes[pos]
             if len(pocket):
+                # [0] If both operands are consts, calculate the result and propagate it instead.
+                # TODO extend to bool ops and string concatenation
+                if (self.matcher.match(
+                        code, type=self.BIN_OPS, lhs=Loc.reg(Loc.ANY), rhs=Loc.reg(Loc.ANY)) and
+                        code['lhs'] in pocket and code['rhs'] in pocket):
+                    debug('two-const operator %s at %d' % (CC._code_name(code['type']), pos))
+                    op_fun = {
+                        CC.ADD: operator.add, CC.SUB: operator.sub,
+                        CC.MUL: operator.mul, CC.DIV: operator.floordiv, CC.MOD: c_modulo
+                    }[code['type']]
+                    res_val = op_fun(int(pocket[code['rhs']].value), int(pocket[code['lhs']].value))
+                    debug('   -> args %d, %d res %d' % (int(pocket[code['rhs']].value),
+                                                        int(pocket[code['lhs']].value), res_val))
+                    res_reg = code['dest'] if code['type'] in [CC.DIV, CC.MOD] else code['rhs']
+                    # Delete and re-insert value, to maintain hash properties.
+                    if res_reg in pocket:
+                        del pocket[res_reg]
+                    pocket[res_reg] = Loc.const(res_val)
+                    self.mark_deleted(pos, comment=CC.S_PROPAGATED, value=res_val)
+                    result += 1
+                    continue
                 # [1] Apply values from pocket first, in case of e.g. [mov $1 %eax, mov %eax %edx].
                 # Only attrs 'src', 'lhs' can use a const value.
                 for attr in [a for a in ['src', 'lhs'] if a in code.keys()]:
@@ -364,3 +390,12 @@ class LatteOptimizer(object):
             start_pos = pos + len(moves) - 1
         # rebuild the jump maps
         self.scan_labels()
+
+
+def c_modulo(a, b):
+    """ A modulo operator that works like % in C -- because python's % handles negative values
+    differently."""
+    r = a % abs(b)
+    if a < 0:
+        r -= abs(b)
+    return r

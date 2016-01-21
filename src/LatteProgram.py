@@ -425,9 +425,10 @@ class BinopCode(ExprCode):
             if case(LP.DIV, LP.MOD):
                 self.add_instr(CC.POP, dest=Loc.reg('c'))
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
-                self.add_instr(CC.DIV, lhs=Loc.reg('a'), rhs=Loc.reg('c'))
                 # quotient in eax, remainder in edx
                 result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type]
+                code = {LP.DIV: CC.DIV, LP.MOD: CC.MOD}[self.type.type]
+                self.add_instr(code, lhs=Loc.reg('c'), rhs=Loc.reg('a'), dest=result)
                 self.add_instr(CC.PUSH, src=result)
                 break
             if case():

@@ -32,6 +32,7 @@ class Codes(object):
     DIV = 23
     NEG = 24  # integer negation
     BOOL_OP = 25  # evaluate a boolean operator (as above)
+    MOD = 26
 
     CHILD = 90  # a special instruction saying "insert i-th child code here"
     ASM = 91  # used for all special asm lines like .file, .text, .string, .globl, etc
@@ -47,7 +48,7 @@ class Codes(object):
     _CODE_NAMES = {
         0: ['PUSH', 'POP', 'MOV'],
         1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'FUNC', 'ENDFUNC'],
-        2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP'],
+        2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP', 'MOD'],
         9: ['CHILD', 'ASM', 'EMPTY', 'DELETED', 'SCOPE', 'ENDSCOPE'],
     }
 
@@ -155,15 +156,15 @@ class Codes(object):
                 op = {cls.ADD: 'addl', cls.SUB: 'subl', cls.MUL: 'imull'}[code['type']]
                 yield cls._str_asm(op, [str(code['lhs']), str(code['rhs'])], code)
                 return
-            if case(cls.DIV):
-                if not code['rhs'].is_reg() or code['rhs'].value in ['a', 'd']:
-                    # the second operand must be in a register other than %eax, %edx
-                    yield cls._str_asm('movl', [str(code['rhs']), str(Loc.reg('c'))], code)
-                    code['rhs'] = Loc.reg('c')
-                if code['lhs'] != Loc.reg('a'):  # the first operand must be in %eax
-                    yield cls._str_asm('movl', [str(code['lhs']), str(Loc.reg('a'))], code)
+            if case(cls.DIV, cls.MOD):
+                if not code['lhs'].is_reg() or code['lhs'].value in ['a', 'd']:
+                    # the operand must be in a register other than %eax, %edx
+                    yield cls._str_asm('movl', [str(code['lhs']), str(Loc.reg('c'))], code)
+                    code['lhs'] = Loc.reg('c')
+                if code['rhs'] != Loc.reg('a'):  # the first operand must be in %eax
+                    yield cls._str_asm('movl', [str(code['rhs']), str(Loc.reg('a'))], code)
                 yield cls._str_asm('cdq', [], code)
-                yield cls._str_asm('idivl', [str(code['rhs'])], code)
+                yield cls._str_asm('idivl', [str(code['lhs'])], code)
                 return
             if case(cls.NEG):
                 yield cls._str_asm('negl', [str(code['rhs'])], code)
