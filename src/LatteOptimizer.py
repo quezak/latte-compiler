@@ -19,7 +19,7 @@ class LatteOptimizer(object):
     INF_PASSES = 100  # number of passes considered 'sufficiently infinite'
     # Codes that 'don't do anything', e.g. if there are no other codes between a jump and its
     # label, the jump can be safely deleted.
-    NOOPS = AnyOf(CC.LABEL, CC.EMPTY, CC.DELETED)
+    NOOPS = AnyOf(CC.LABEL, CC.EMPTY, CC.DELETED, CC.SCOPE, CC.ENDSCOPE)
     # Codes that do an operation but no flow control or stack operations, so in [push, <op>, pop]
     # push and pop can be combined into mov if the operation's arguments are unrelated.
     NO_STACK_OPS = AnyOf(CC.MOV, CC.ADD, CC.SUB, CC.MUL, CC.NEG)
@@ -228,7 +228,8 @@ class LatteOptimizer(object):
             p_push, p_op, p_pop = indexes
             src, dest = self.codes[p_push]['src'], self.codes[p_pop]['dest']
             # do the reduction only if op's arguments do nothing to src and dest locations
-            if src not in self.codes[p_op].values() and dest not in self.codes[p_op].values():
+            if ((src.is_constant or src not in self.codes[p_op].values()) and
+                    dest not in self.codes[p_op].values()):
                 result += self._do_push_pop_reduction([p_push, p_pop])
         return result
 

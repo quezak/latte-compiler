@@ -25,6 +25,10 @@ def code_spec(attrlist=[], **kwargs):
 
 
 class CodeMatcher(object):
+
+    # Codes considered blank, e.g. can be skipped in iteration.
+    BLANK = AnyOf(CC.EMPTY, CC.DELETED, CC.SCOPE, CC.ENDSCOPE)
+
     def __init__(self, optimizer):
         # Reference to optimier, so we always have access to current codes list
         self.optimizer = optimizer
@@ -61,7 +65,7 @@ class CodeMatcher(object):
     def code_iter(self, start_pos=0, end_pos=None):
         """ Generator that yields all the codes in range that are not marked DELETED. """
         for pos in xrange(start_pos, end_pos or self.len_codes()):
-            if not self.match(self.code(pos), type=CC.DELETED):
+            if not self.match(self.code(pos), type=self.BLANK):
                 yield pos
 
     def gen_seq(self, spec_list, start_pos=0, end_pos=None):
