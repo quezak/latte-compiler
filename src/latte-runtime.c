@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 /*
- * Latte runtime library, containing all the required predefined functions, and one additional
- * utility for string concatenation.
+ * Latte runtime library, containing all the required predefined functions, and additional
+ * utilities for string concatenation and memory allocation.
  */
 
 void printInt(int n) {
@@ -54,10 +55,23 @@ char* concatString(const char* a, const char* b) {
     int len = lenA + strlen(b);
     char* dest = (char*) malloc(len * sizeof(char));
     if (!dest) {
-        (void) printf("can't concatenate: memory allocation error");
-        exit(2);
+        (void) printf("FATAL ERROR: can't concatenate: memory allocation error");
+        exit(ENOMEM);
     }
     strcpy(dest, a);
     strcpy(dest + lenA, b);
     return dest;
+}
+
+void* getMemory(size_t size) {
+    void *res = malloc(size);
+    if (!res) {
+        (void) printf("FATAL ERROR: can't allocate memory for object");
+        exit(ENOMEM);
+    }
+    return res;
+}
+
+void freeMemory(void *ptr) {
+    free(ptr);
 }
