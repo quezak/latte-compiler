@@ -19,7 +19,7 @@ from LatteParser import LatteParser
 import LatteParser as LP
 from LatteErrors import Status
 from LatteNodes import *
-from LatteUtils import FunArg, DeclArg
+from LatteUtils import FunArg, DeclArg, DataType
 }
 
 @members {
@@ -63,7 +63,7 @@ prog returns [lt=ProgTree()]
 
 fundef returns [lt=FunTree()]
     : ^(FUNDEF
-            type { $lt.set_ret_type($type.id); }
+            type { $lt.set_ret_type($type.dt); }
             IDENT { $lt.set_name($IDENT.text); }
             (arg { $lt.add_arg($arg.fa); })*
             block { $lt.set_block($block.lt); }
@@ -71,11 +71,12 @@ fundef returns [lt=FunTree()]
     ;
 
 arg returns [fa]
-    : ^(ARG type IDENT) { $fa = FunArg($type.id, $IDENT.text); }
+    : ^(ARG type IDENT) { $fa = FunArg($type.dt, $IDENT.text); }
     ;
 
-type returns [id]
-    : t=(INT | STRING | BOOLEAN | VOID) { $id = $t.type; }
+type returns [dt]
+    : ^(ARRAY t=(INT | STRING | BOOLEAN | VOID)) { $dt = DataType.array($t.type); }
+    | t=(INT | STRING | BOOLEAN | VOID) { $dt = DataType($t.type); }
     ;
 
 block returns [lt=BlockTree()]
@@ -86,7 +87,7 @@ block returns [lt=BlockTree()]
 stmt returns [lt=StmtTree()]
     : block
         { $lt = $block.lt; }
-    | ^(DECL type { $lt = DeclTree($type.id); }
+    | ^(DECL type { $lt = DeclTree($type.dt); }
             (ditem { $lt.add_item($ditem.item); })+
        )
     | ^(ASSIGN { $lt = StmtTree(ASSIGN); } 

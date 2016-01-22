@@ -23,6 +23,7 @@ tokens {
     FUNCALL;
     NEG;
     TYPE_ERROR;
+    ARRAY;
 }
 
 // Header pasted on the top of parser file.
@@ -96,7 +97,10 @@ prog        : (fundef)* EOF -> ^(PROG fundef*);
 fundef      : type IDENT arglist block -> ^(FUNDEF type IDENT arglist? block);
 arglist     : LPAREN! (arg (LISTSEP! arg)* )? RPAREN!;
 arg         : type IDENT -> ^(ARG type IDENT);
-type        : INT | STRING | BOOLEAN | VOID;
+type        : plain_type^
+            | plain_type LSQUARE RSQUARE -> ^(ARRAY plain_type)
+            ;
+plain_type  : INT | STRING | BOOLEAN | VOID;
 
 // statements ----------------------------------------------
 block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
@@ -152,6 +156,8 @@ STMTSEP     : ';';
 LISTSEP     : ',';
 LPAREN      : '(';
 RPAREN      : ')';
+LSQUARE     : '[';
+RSQUARE     : ']';
 LBRACE      : '{';
 RBRACE      : '}';
 GEQ         : '>=';

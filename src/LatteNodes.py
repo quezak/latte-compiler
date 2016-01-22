@@ -176,7 +176,7 @@ class ProgTree(LatteTree):
             if main_sym != main_exp:
                 Status.add_error(TypecheckError('`%s` has wrong type: `%s`' %
                                                 (Builtins.MAIN, str(main_sym)), main_sym.pos))
-                Status.add_note(TypecheckError('expected `%s` type: `%s`' %
+                Status.add_note(TypecheckError('expected `%s` typeeype: `%s`' %
                                                (Builtins.MAIN, str(main_exp)), main_sym.pos))
         else:
             Status.add_error(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
@@ -217,7 +217,7 @@ class FunTree(LatteTree):
         self.add_child(block)
 
     def add_arg(self, arg):
-        debug('fun add_arg=%s type=%d at=%s' % (arg.name, arg.type, arg.pos))
+        debug('fun add_arg=%s type=%s at=%s' % (arg.name, str(arg.type), arg.pos))
         sym = Symbol(arg.name, arg.type, pos=arg.pos)
         self.add_symbol(sym)
         self.args.append(sym)
@@ -478,7 +478,7 @@ class LiteralTree(ExprTree):
     _int_max = 2147483647
 
     @classmethod
-    def _get_value_type(cls, type):
+    def _get_value_typeid(cls, typeid):
         """ Translate lexer's literal types to actual data types. """
         try:
             return {
@@ -486,13 +486,13 @@ class LiteralTree(ExprTree):
                 LP.STRINGLIT: LP.STRING,
                 LP.TRUE: LP.BOOLEAN,
                 LP.FALSE: LP.BOOLEAN,
-            }[type]
+            }[typeid]
         except KeyError:
-            return type
+            return typeid
 
-    def __init__(self, type, value, **kwargs):
-        real_type = self._get_value_type(type)
-        super(LiteralTree, self).__init__(real_type, **kwargs)
+    def __init__(self, typeid, value, **kwargs):
+        real_typeid = self._get_value_typeid(typeid)
+        super(LiteralTree, self).__init__(real_typeid, **kwargs)
         self.value = value
         debug('literal %s: pos %s' % (self.value, self.pos))
 
@@ -536,7 +536,7 @@ class UnopTree(ExprTree):
     def _get_typeid_for_op(cls, op):
         """ Return a type that can be used with the operator (only one for now). """
         try:
-            return {LP.NOT: LP.BOOLEAN, LP.NEG: LP.INT, }[op.type]
+            return {LP.NOT: LP.BOOLEAN, LP.NEG: LP.INT, }[op.type.id]
         except KeyError:
             return None
 
@@ -571,7 +571,7 @@ class BinopTree(ExprTree):
                 LP.INT: cls._int_ops,
                 LP.BOOLEAN: cls._boolean_ops,
                 LP.STRING: cls._string_ops,
-            }[type.type]
+            }[type.type.id]
         except KeyError:
             return []
 

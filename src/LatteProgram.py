@@ -416,7 +416,7 @@ class BinopCode(ExprCode):
         self.add_child_by_idx(1)
         for case in switch(self.type.type):
             if case(LP.PLUS, LP.MINUS, LP.MULT):
-                op = {LP.PLUS: CC.ADD, LP.MINUS: CC.SUB, LP.MULT: CC.MUL}[self.type.type]
+                op = {LP.PLUS: CC.ADD, LP.MINUS: CC.SUB, LP.MULT: CC.MUL}[self.type.type.id]
                 self.add_instr(CC.POP, dest=Loc.reg('d'))
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 self.add_instr(op, lhs=Loc.reg('d'), rhs=Loc.reg('a'))
@@ -426,8 +426,8 @@ class BinopCode(ExprCode):
                 self.add_instr(CC.POP, dest=Loc.reg('c'))
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # quotient in eax, remainder in edx
-                result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type]
-                code = {LP.DIV: CC.DIV, LP.MOD: CC.MOD}[self.type.type]
+                result = {LP.DIV: Loc.reg('a'), LP.MOD: Loc.reg('d')}[self.type.type.id]
+                code = {LP.DIV: CC.DIV, LP.MOD: CC.MOD}[self.type.type.id]
                 self.add_instr(code, lhs=Loc.reg('c'), rhs=Loc.reg('a'), dest=result)
                 self.add_instr(CC.PUSH, src=result)
                 break
@@ -446,7 +446,7 @@ class BinopCode(ExprCode):
                 self.label_false = kwargs['on_false']
                 jmp_code = {LP.EQ: 'je', LP.NEQ: 'jne',
                             LP.GT: 'jg', LP.GEQ: 'jge',
-                            LP.LT: 'jl', LP.LEQ: 'jle', }[self.type.type]
+                            LP.LT: 'jl', LP.LEQ: 'jle', }[self.type.type.id]
                 self.add_instr(CC.IF_JUMP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=jmp_code, label=self.label_true)
                 self.add_instr(CC.JUMP, label=self.label_false)
@@ -454,7 +454,7 @@ class BinopCode(ExprCode):
                 # expression returning bool -- select the comparision set instruction
                 set_code = {LP.EQ: 'sete', LP.NEQ: 'setne',
                             LP.GT: 'setg', LP.GEQ: 'setge',
-                            LP.LT: 'setl', LP.LEQ: 'setle', }[self.type.type]
+                            LP.LT: 'setl', LP.LEQ: 'setle', }[self.type.type.id]
                 self.add_instr(CC.BOOL_OP, lhs=Loc.reg('d'), rhs=Loc.reg('a'),
                                op=set_code, dest=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))

@@ -3,8 +3,61 @@
 """ Helper classes for LatteNodes: symbols for the symbol tables. """
 
 from FuturePrint import debug
-from LatteErrors import Status, TypecheckError
+from LatteErrors import Status, TypecheckError, InternalError
 import LatteParser as LP
+
+
+class DataType(object):
+    """ Class representing data type in Latte. """
+
+    # list of parser's typeids
+    TYPEIDS = [LP.INT, LP.STRING, LP.BOOLEAN, LP.VOID, LP.FUNCALL, LP.ARRAY, LP.TYPE_ERROR]
+
+    def __init__(self, type, subtype=None):
+        # Check if called with LP.* typeids or another DataType
+        self.id = DataType.get_typeid(type)
+        self.subtype = None
+        if isinstance(type, DataType):
+            self.subtype = type.subtype
+        if subtype:
+            self.subtype = subtype
+        # TODO remove assertions after testing
+        assert(self.id is None or isinstance(self.id, int))
+        # TODO allow arrays of non-plain objects
+        assert(self.subtype is None or (self.id == LP.ARRAY and isinstance(self.subtype, int)))
+    
+    @classmethod
+    def get_typeid(cls, type):
+        """ Return the typeid from either a DataType object or int. """
+        if isinstance(type, DataType):
+            return type.id
+        else:
+            return type
+
+    @classmethod
+    def mkarray(cls, subtype):
+        """ Factory method returning array types. """
+        return cls(LP.ARRAY, subtype)
+
+    def __eq__(self, other):
+        """ Type matching -- allow comparision with LP.* typeids. """
+        if isinstance(other, int):
+            return self.id == other
+        if isinstance(other, DataType):
+            return self.id == other.id and self.subtype == other.subtype
+        return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __str__(self):
+        s = LP.tokenNames[self.id]
+        if self.id == LP.ARRAY:
+            s += '(%s)' % LP.tokenNames(self.subtype)
+        return s
 
 
 class Symbol(object):
@@ -13,7 +66,7 @@ class Symbol(object):
         super(Symbol, self).__init__()
         self.name = name
         self.pos = pos
-        self.type = type
+        self.type = DataType(type)
 
     def __eq__(self, other):
         """ Type matching. """
@@ -28,7 +81,7 @@ class Symbol(object):
         return not result
 
     def __str__(self):
-        return LP.tokenNames[self.type].lower()
+        return str(self.type).lower()
 
     def is_function(self):
         return False
