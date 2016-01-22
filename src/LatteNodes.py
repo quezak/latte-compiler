@@ -503,10 +503,24 @@ class LiteralTree(ExprTree):
         real_typeid = self._get_value_typeid(typeid)
         super(LiteralTree, self).__init__(real_typeid, **kwargs)
         self.value = value
+        if 'obj' in kwargs:
+            self.obj = kwargs['obj']
         debug('literal %s: pos %s' % (self.value, self.pos))
 
     def print_tree(self):
-        self._print_indented('= %s %s' % (str(self.type), self.value))
+        value_str = self.value
+        if self.type.type == LP.ATTR:
+            value_str = self.obj + '.' + value_str
+        self._print_indented('= %s %s' % (str(self.type), value_str))
+
+    def _check_symbol(self, name):
+        if not self.has_symbol(name):
+            Status.add_error(TypecheckError(
+                'use of undeclared variable `%s`' % name, self.pos))
+            Status.add_note(TypecheckError(
+                'each undeclared identifier is reported only once in each function'))
+            # add a dummy type-error symbol to prevent further errors about this variable
+            self.get_cur_fun().add_symbol(Symbol(name, LP.TYPE_ERROR, self.pos))
 
     def get_type(self):
         # return immediately if the type is already calculated
@@ -515,14 +529,20 @@ class LiteralTree(ExprTree):
         # otherwise, set the type as the variable was declared
         for case in switch(self.type.type):
             if case(LP.IDENT):
-                if not self.has_symbol(self.value):
-                    Status.add_error(TypecheckError(
-                        'use of undeclared variable `%s`' % self.value, self.pos))
-                    Status.add_note(TypecheckError(
-                        'each undeclared identifier is reported only once in each function'))
-                    # add a dummy type-error symbol to prevent further errors about this variable
-                    self.get_cur_fun().add_symbol(Symbol(self.value, LP.TYPE_ERROR, self.pos))
+                self._check_symbol(self.value)
                 self.set_value_type(self.symbol(self.value))
+                break
+            if case(LP.ATTR):
+                self._check_symbol(self.obj)
+                sym = self.symbol(self.obj)
+                if sym.type == LP.ARRAY:
+                    if self.value == Builtins.LENGTH:
+                        self.set_value_type(Symbol('', LP.INT, self.pos))
+                    else:
+                        Status.add_error(TypecheckError(
+                            'invalid attribute `%s` for type `%s`' % (self.value, str(sym.type))))
+                else:
+                    raise InternalError('ATTR for non-array type ' + str(sym.type))
                 break
             if case(LP.INT):
                 if int(self.value) > self._int_max:

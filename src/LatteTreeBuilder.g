@@ -127,7 +127,9 @@ ifelse returns [lt=StmtTree()]
 
 // expressions ---------------------------------------------
 expr returns [lt=ExprTree]
-    : lit=(IDENT|NUMBER|STRINGLIT|TRUE|FALSE)
+    : ^(ATTR obj=IDENT attr=IDENT)
+        { $lt = LiteralTree(ATTR, $attr.text, obj=$obj.text); }
+    | lit=(IDENT|NUMBER|STRINGLIT|TRUE|FALSE)
         { $lt = LiteralTree($lit.type, $lit.text); }
     | ^(op=(NOT|NEG) e=expr)
         { $lt = UnopTree($op.type, $e.lt); }

@@ -24,6 +24,7 @@ tokens {
     NEG;
     TYPE_ERROR;
     ARRAY;
+    ATTR;
 }
 
 // Header pasted on the top of parser file.
@@ -41,6 +42,7 @@ class Builtins:
     READ_STRING = 'readString'
     ERROR = 'error'
     MAIN = 'main'
+    LENGTH = 'length'
 }
 
 // Header pasted on the top of lexer file.
@@ -127,7 +129,8 @@ ifelse      : ELSE^ stmt;
 
 // expressions ---------------------------------------------
 boolean     : TRUE | FALSE;
-eAtom       : IDENT^
+eAtom       : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
+            | IDENT^
             | NUMBER^
             | STRINGLIT^
             | boolean^
@@ -178,6 +181,7 @@ AND         : '&&';
 OR          : '||';
 LEQ         : '<=';
 GT          : '>';
+DOT         : '.';
 RETURN      : 'return';
 IF          : 'if';
 ELSE        : 'else';

@@ -8,6 +8,7 @@ computed while generating the codes (at least for now, it should be moved to a l
 import abc
 import LatteParser as LP
 from LatteCodes import Codes as CC, Loc
+from LatteParser import Builtins
 from FuturePrint import debug
 from LatteUtils import Symbol
 from LatteErrors import InternalError
@@ -307,6 +308,8 @@ class LiteralCode(ExprCode):
     def __init__(self, tree, **kwargs):
         super(LiteralCode, self).__init__(tree, **kwargs)
         self.value = tree.value
+        if self.type.type == LP.ATTR:
+            self.obj = tree.obj
         for case in switch(self.type.type):
             if case(LP.BOOLEAN):
                 # We already checked that a boolean is a boolean, now we use numbers.
@@ -347,6 +350,17 @@ class LiteralCode(ExprCode):
                 break
             if case(LP.STRING):
                 self.add_instr(CC.PUSH, src=Loc.stringlit(self))
+                break
+            if case(LP.ATTR):
+                sym = self.tree.symbol(self.obj)
+                if sym.type == LP.ARRAY and self.value == Builtins.LENGTH:
+                    # Array length is stored in first element of its memory block.
+                    self.add_instr(CC.MOV, src=Loc.sym(sym), dest=Loc.reg('a'))
+                    self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_a), dest=Loc.reg('a'))
+                    self.add_instr(CC.PUSH, src=Loc.reg('a'))
+                else:
+                    raise InternalError('invalid attr %s for type %s' % (self.value, str(obj.type)))
+                break
         self.check_unused_result()
 
     def is_constant(self):
@@ -602,7 +616,7 @@ def StmtFactory(tree, **kwargs):
 
 def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
-        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.IDENT, LP.ARRAY):
+        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.IDENT, LP.ARRAY, LP.ATTR):
             return LiteralCode
         if case(LP.NOT, LP.NEG):
             return UnopCode
