@@ -133,6 +133,7 @@ eAtom       : IDENT^
             | boolean^
             | IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
+            | NEW^ type LSQUARE! NUMBER RSQUARE!
             ;
 eUnary      : NOT^ eUnary
             | MINUS eUnary -> ^(NEG eUnary)
@@ -187,6 +188,7 @@ BOOLEAN     : 'boolean';
 VOID        : 'void';
 TRUE        : 'true';
 FALSE       : 'false';
+NEW         : 'new';
 NUMBER      : ('0'..'9')+;
 IDENT       : IDFCHAR (IDCHAR)*;
 fragment IDFCHAR : ('a'..'z' | 'A'..'Z' | '_');

@@ -18,6 +18,7 @@ class Codes(object):
     PUSH = 0
     POP = 1
     MOV = 2
+    LEA = 3
 
     JUMP = 10  # bare jump to a label
     IF_JUMP = 11  # all kinds of conditional jumps
@@ -46,7 +47,7 @@ class Codes(object):
     S_PROPAGATED = 'propagated'  # to mark propagated constants assigned back before a jump
 
     _CODE_NAMES = {
-        0: ['PUSH', 'POP', 'MOV'],
+        0: ['PUSH', 'POP', 'MOV', 'LEA'],
         1: ['JUMP', 'IF_JUMP', 'LABEL', 'CALL', 'FUNC', 'ENDFUNC'],
         2: ['ADD', 'SUB', 'MUL', 'DIV', 'NEG', 'BOOL_OP', 'MOD'],
         9: ['CHILD', 'ASM', 'EMPTY', 'DELETED', 'SCOPE', 'ENDSCOPE'],
@@ -57,7 +58,9 @@ class Codes(object):
         return cls._CODE_NAMES[type / 10][type % 10]
 
     var_size = 4  # every type uses 4 bytes for now
-    strcat_function = 'concatString'  # runtime library functions for '+' string operator
+    STRCAT_FUNCTION = 'concatString'  # runtime library function for '+' string operator
+    MALLOC_FUNCTION = 'getMemory'  # runtime library functions for allocating memory for objects
+    FREE_FUNCTION = 'freeMemory'
 
     _labels = 1
 

@@ -655,6 +655,24 @@ class FuncallTree(ExprTree):
         self.check_children_types()
 
 
+# new object construction #######################################################################
+class NewTree(ExprTree):
+    """ Node for calls to `new` operator. """
+    def __init__(self, value_type, size=None, **kwargs):
+        # Size should be set only for arrays.
+        if value_type != LP.ARRAY and size is not None:
+            raise InternalError('size set for new operator with non-array type ' + str(value_type))
+        super(NewTree, self).__init__(LP.NEW, **kwargs)
+        sym = Symbol('', value_type, self.pos)
+        self.set_value_type(sym)
+        if size:
+            self.size = size
+
+    def print_tree(self):
+        size_str = '' if not self.size else '[%d]' % self.size
+        self._print_indented('= new %s%s' % (str(self.value_type), size_str))
+
+
 # helper class to mark code after an infinite loop unreachable
 class InfiniteLoopMark(StmtTree):
     type = 10000

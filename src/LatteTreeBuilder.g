@@ -138,4 +138,6 @@ expr returns [lt=ExprTree]
     | ^(FUNCALL IDENT { $lt = FuncallTree($IDENT.text); }
             (e=expr { $lt.add_child($e.lt); } )*
        )
+    | ^(NEW type NUMBER)
+        { $lt = NewTree(DataType.mkarray($type.dt.id), int($NUMBER.text)); }
     ;

@@ -60,6 +60,7 @@ class LatteOptimizer(object):
         # TODO don't assign dead vars
         # TODO free string memory
         # TODO [mov mem regA, mov regA regB]
+        # TODO [mov regA memX, mov memX regB]
         if Flags.optimizer_summary:
             Status.add_note(LatteError('optimizer case counters:'))
             for name, count in self.opt_counters.iteritems():
