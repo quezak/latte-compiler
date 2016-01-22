@@ -75,7 +75,7 @@ arg returns [fa]
     ;
 
 type returns [dt]
-    : ^(ARRAY t=(INT | STRING | BOOLEAN | VOID)) { $dt = DataType.array($t.type); }
+    : ^(ARRAY t=(INT | STRING | BOOLEAN | VOID)) { $dt = DataType.mkarray($t.type); }
     | t=(INT | STRING | BOOLEAN | VOID) { $dt = DataType($t.type); }
     ;
 

@@ -11,7 +11,7 @@ class DataType(object):
     """ Class representing data type in Latte. """
 
     # list of parser's typeids
-    TYPEIDS = [LP.INT, LP.STRING, LP.BOOLEAN, LP.VOID, LP.FUNCALL, LP.ARRAY, LP.TYPE_ERROR]
+    PLAIN_TYPES = [LP.INT, LP.STRING, LP.BOOLEAN, LP.VOID, LP.TYPE_ERROR]
 
     def __init__(self, type, subtype=None):
         # Check if called with LP.* typeids or another DataType
@@ -56,7 +56,7 @@ class DataType(object):
     def __str__(self):
         s = LP.tokenNames[self.id]
         if self.id == LP.ARRAY:
-            s += '(%s)' % LP.tokenNames(self.subtype)
+            s += '(%s)' % LP.tokenNames[self.subtype]
         return s
 
 

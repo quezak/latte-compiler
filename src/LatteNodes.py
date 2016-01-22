@@ -8,7 +8,7 @@ import abc
 import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
-from LatteUtils import Symbol, FunSymbol
+from LatteUtils import Symbol, FunSymbol, DataType
 from LatteErrors import Status, TypecheckError, InternalError
 from Utils import switch
 
@@ -267,7 +267,6 @@ class StmtTree(LatteTree):
         else:
             self._print_indented('|%s' % str(self.type))
 
-    # sprawdza, czy instrukcja ma na końcu/ach return (a właściwie wypisuje błąd, jeśli nie ma)
     def check_return(self):
         """ Checks if the current statement always returns, and returns the return statement. """
         for case in switch(self.type.type):
@@ -365,6 +364,11 @@ class StmtTree(LatteTree):
                 Status.add_warning(TypecheckError('unused result of expression', ch.pos))
                 ch.unused_result = True
 
+    def is_null(self):
+        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
+        objects -- since there is no explicit NULL in Latte). """
+        return False
+
 
 # code block ####################################################################################
 class BlockTree(StmtTree):
@@ -421,6 +425,9 @@ class DeclTree(StmtTree):
                     break
                 if case(LP.VOID):
                     return  # just to avoid errors
+                if case(LP.ARRAY):
+                    item.expr = LiteralTree(self.decl_type.type, None)
+                    break
                 if case():
                     raise InternalError('no default value for type %s' % str(self.decl_type))
         self.add_child(item.expr)
@@ -491,6 +498,8 @@ class LiteralTree(ExprTree):
             return typeid
 
     def __init__(self, typeid, value, **kwargs):
+        """ Literal constructor. typeid can be a DataType (e.g. an array or object type) and value
+        a reference (in particular, value=None means a (non-explicit) NULL). """
         real_typeid = self._get_value_typeid(typeid)
         super(LiteralTree, self).__init__(real_typeid, **kwargs)
         self.value = value
@@ -527,6 +536,11 @@ class LiteralTree(ExprTree):
     def check_types(self):
         # Only save the type.
         self.get_type()
+
+    def is_null(self):
+        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
+        objects -- since there is no explicit NULL in Latte). """
+        return self.type not in DataType.PLAIN_TYPES and self.value is None
 
 
 # unary operator ################################################################################

@@ -267,7 +267,7 @@ class DeclCode(StmtCode):
         for item in self.items:
             addr = Loc.var_addr(fun.next_var_num())
             sym = Symbol(item.name, self.decl_type.type, addr)
-            if item.expr:
+            if item.expr and not item.expr.is_null():
                 self.add_child_by_idx(item.expr_child_idx)
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.sym(sym))
@@ -577,7 +577,7 @@ def StmtFactory(tree, **kwargs):
 
 def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
-        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.IDENT):
+        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.IDENT, LP.ARRAY):
             return LiteralCode
         if case(LP.NOT, LP.NEG):
             return UnopCode
