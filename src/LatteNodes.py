@@ -503,9 +503,42 @@ class LiteralTree(ExprTree):
         real_typeid = self._get_value_typeid(typeid)
         super(LiteralTree, self).__init__(real_typeid, **kwargs)
         self.value = value
+        debug('literal %s: pos %s' % (self.value, self.pos))
+
+    def print_tree(self):
+        self._print_indented('= %s %s' % (str(self.type), self.value))
+
+    def get_type(self):
+        # return immediately if the type is already calculated
+        if self.value_type:
+            return self.value_type
+        # otherwise, set the type
+        for case in switch(self.type.type):
+            if case(LP.INT):
+                if int(self.value) > self._int_max:
+                    Status.add_error(TypecheckError(
+                        'integer constant too large: `%s`' % self.value, self.pos))
+                # intentional fall-through
+            if case():
+                self.set_value_type(self.type)
+        return self.value_type
+
+    def check_types(self):
+        # Only save the type.
+        self.get_type()
+
+    def is_null(self):
+        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
+        objects -- since there is no explicit NULL in Latte). """
+        return self.type not in DataType.PLAIN_TYPES and self.value is None
+
+
+# variables, fields #############################################################################
+class VarTree(LiteralTree):
+    def __init__(self, typeid, value, **kwargs):
+        super(VarTree, self).__init__(typeid, value, **kwargs)
         if 'obj' in kwargs:
             self.obj = kwargs['obj']
-        debug('literal %s: pos %s' % (self.value, self.pos))
 
     def print_tree(self):
         value_str = self.value
@@ -544,24 +577,9 @@ class LiteralTree(ExprTree):
                 else:
                     raise InternalError('ATTR for non-array type ' + str(sym.type))
                 break
-            if case(LP.INT):
-                if int(self.value) > self._int_max:
-                    Status.add_error(TypecheckError(
-                        'integer constant too large: `%s`' % self.value, self.pos))
-                # intentional fall-through
             if case():
-                self.set_value_type(self.type)
+                raise InternalError('invalid variable type %s' % str(self.type.type))
         return self.value_type
-
-    def check_types(self):
-        # Only save the type.
-        self.get_type()
-
-    def is_null(self):
-        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
-        objects -- since there is no explicit NULL in Latte). """
-        return self.type not in DataType.PLAIN_TYPES and self.value is None
-
 
 # unary operator ################################################################################
 class UnopTree(ExprTree):

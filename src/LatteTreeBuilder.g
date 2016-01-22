@@ -91,12 +91,11 @@ stmt returns [lt=StmtTree()]
             (ditem { $lt.add_item($ditem.item); })+
        )
     | ^(ASSIGN { $lt = StmtTree(ASSIGN); } 
-            IDENT { $lt.add_child(LiteralTree(IDENT, $IDENT.text)); }
+            var { $lt.add_child($var.lt); }
             expr { $lt.add_child($expr.lt); }
        )
-    | ^(op=(INCR|DECR) IDENT)
-        { $lt = StmtTree($op.type, children=[LiteralTree(IDENT, $IDENT.text, pos_off=-2)],
-                         pos_off=-2); }
+    | ^(op=(INCR|DECR) var)
+        { $lt = StmtTree($op.type, children=[$var.lt], pos_off=-2); }
     | ^(RETURN { $lt = StmtTree(RETURN); }
             (expr { $lt.add_child($expr.lt); })?
        )
@@ -126,10 +125,17 @@ ifelse returns [lt=StmtTree()]
     ;
 
 // expressions ---------------------------------------------
-expr returns [lt=ExprTree]
+var returns [lt]
     : ^(ATTR obj=IDENT attr=IDENT)
-        { $lt = LiteralTree(ATTR, $attr.text, obj=$obj.text); }
-    | lit=(IDENT|NUMBER|STRINGLIT|TRUE|FALSE)
+        { $lt = VarTree(ATTR, $attr.text, obj=$obj.text); }
+    | IDENT
+        { $lt = VarTree(IDENT, $IDENT.text); }
+    ;
+
+expr returns [lt]
+    : var
+        { $lt = $var.lt; }
+    | lit=(NUMBER|STRINGLIT|TRUE|FALSE)
         { $lt = LiteralTree($lit.type, $lit.text); }
     | ^(op=(NOT|NEG) e=expr)
         { $lt = UnopTree($op.type, $e.lt); }

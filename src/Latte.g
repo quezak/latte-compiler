@@ -129,8 +129,12 @@ ifelse      : ELSE^ stmt;
 
 // expressions ---------------------------------------------
 boolean     : TRUE | FALSE;
-eAtom       : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
+
+var         : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
             | IDENT^
+            ;
+
+eAtom       : var^
             | NUMBER^
             | STRINGLIT^
             | boolean^

@@ -308,8 +308,6 @@ class LiteralCode(ExprCode):
     def __init__(self, tree, **kwargs):
         super(LiteralCode, self).__init__(tree, **kwargs)
         self.value = tree.value
-        if self.type.type == LP.ATTR:
-            self.obj = tree.obj
         for case in switch(self.type.type):
             if case(LP.BOOLEAN):
                 # We already checked that a boolean is a boolean, now we use numbers.
@@ -322,34 +320,64 @@ class LiteralCode(ExprCode):
     def gen_code(self, **kwargs):
         if self.has_jump_codes(kwargs):
             # bool literal as part of condition evaluation -- jump basing on value
-            for case in switch(self.type.type):
-                if case(LP.BOOLEAN):
-                    label = {0: kwargs['on_false'], 1: kwargs['on_true']}[self.value]
-                    self.add_instr(CC.JUMP, label=label)
-                    break
-                if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
-                    self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
-                                   dest=Loc.reg('a'))
-                    # note: comparing with 0, so on equality jump to false!
-                    self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
-                                   op='je', label=kwargs['on_false'])
-                    self.add_instr(CC.JUMP, label=kwargs['on_true'])
-                    break
-                if case():
-                    raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
-                        str(self.type), self.tree.pos))
-            return
+            self._gen_code_in_cond(**kwargs)
+        else:  # otherwise, evaluate the value and push it
+            self._gen_code_as_value(**kwargs)
+            self.check_unused_result()
+
+    def _gen_code_in_cond(self, **kwargs):
+        for case in switch(self.type.type):
+            if case(LP.BOOLEAN):
+                label = {0: kwargs['on_false'], 1: kwargs['on_true']}[self.value]
+                self.add_instr(CC.JUMP, label=label)
+                break
+            if case():
+                raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
+                    str(self.type), self.tree.pos))
+
+    def _gen_code_as_value(self, **kwargs):
         for case in switch(self.type.type):
             if case(LP.BOOLEAN, LP.INT):
                 self.add_instr(CC.PUSH, src=Loc.const(self.value))
                 break
+            if case(LP.STRING):
+                self.add_instr(CC.PUSH, src=Loc.stringlit(self))
+                break
+            if case():
+                raise InternalError('invalid literal type %s' % str(self.type.type))
+
+    def is_constant(self):
+        return True
+
+
+# variables, fields #############################################################################
+class VarCode(LiteralCode):
+    def __init__(self, tree, **kwargs):
+        super(VarCode, self).__init__(tree, **kwargs)
+        self.value = tree.value
+        if self.type.type == LP.ATTR:
+            self.obj = tree.obj
+
+    def _gen_code_in_cond(self, **kwargs):
+        for case in switch(self.type.type):
+            if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
+                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
+                               dest=Loc.reg('a'))
+                # note: comparing with 0, so on equality jump to false!
+                self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
+                               op='je', label=kwargs['on_false'])
+                self.add_instr(CC.JUMP, label=kwargs['on_true'])
+                break
+            if case():
+                raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
+                    str(self.type), self.tree.pos))
+
+    def _gen_code_as_value(self, **kwargs):
+        for case in switch(self.type.type):
             if case(LP.IDENT):
                 self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
                                dest=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
-                break
-            if case(LP.STRING):
-                self.add_instr(CC.PUSH, src=Loc.stringlit(self))
                 break
             if case(LP.ATTR):
                 sym = self.tree.symbol(self.obj)
@@ -361,10 +389,11 @@ class LiteralCode(ExprCode):
                 else:
                     raise InternalError('invalid attr %s for type %s' % (self.value, str(obj.type)))
                 break
-        self.check_unused_result()
+            if case():
+                raise InternalError('invalid variable type %s' % str(self.type.type))
 
     def is_constant(self):
-        return self.type.type != LP.IDENT
+        return False
 
 
 # unary operator ################################################################################
@@ -616,8 +645,10 @@ def StmtFactory(tree, **kwargs):
 
 def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
-        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.IDENT, LP.ARRAY, LP.ATTR):
+        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.ARRAY):
             return LiteralCode
+        if case(LP.IDENT, LP.ATTR):
+            return VarCode
         if case(LP.NOT, LP.NEG):
             return UnopCode
         if case(LP.MULT, LP.DIV, LP.MOD, LP.PLUS, LP.MINUS, LP.LT, LP.LEQ, LP.GT, LP.GEQ,
