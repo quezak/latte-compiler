@@ -44,6 +44,7 @@ class Builtins:
     ERROR = 'error'
     MAIN = 'main'
     LENGTH = 'length'
+    FOR_COUNTER = '__for_counter__'
 }
 
 // Header pasted on the top of lexer file.
@@ -100,24 +101,25 @@ prog        : (fundef)* EOF -> ^(PROG fundef*);
 fundef      : type IDENT arglist block -> ^(FUNDEF type IDENT arglist? block);
 arglist     : LPAREN! (arg (LISTSEP! arg)* )? RPAREN!;
 arg         : type IDENT -> ^(ARG type IDENT);
-type        : plain_type^
-            | plain_type LSQUARE RSQUARE -> ^(ARRAY plain_type)
+type        : plainType^
+            | plainType LSQUARE RSQUARE -> ^(ARRAY plainType)
             ;
-plain_type  : INT | STRING | BOOLEAN | VOID;
+plainType   : INT | STRING | BOOLEAN | VOID;
 
 // statements ----------------------------------------------
 block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
 stmt        : STMTSEP!
             | block
             | type ditemlist STMTSEP -> ^(DECL type ditemlist)
-            | (var)=> var_stmt STMTSEP!
+            | (var)=> varStmt STMTSEP!
             | RETURN^ expr? STMTSEP!
             | IF^ condition stmt ((ELSE)=>ifelse)?
             | WHILE^ condition stmt
+            | FOR^ LPAREN! type ditem COLON! expr RPAREN! stmt
             | expr STMTSEP!
             ;
 
-var_stmt    : var ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^);
+varStmt     : var ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^);
 
 ditemlist   : ditem (LISTSEP! ditem)*;
 ditem       : IDENT -> ^(DITEM IDENT)
@@ -132,14 +134,14 @@ boolean     : TRUE | FALSE;
 
 var         : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
             | obj=IDENT LSQUARE expr RSQUARE -> ^(ELEM $obj expr)
-            | IDENT^
+            | { self.input.LA(2) != LPAREN }?=>IDENT^
             ;
 
-eAtom       : var^
+eAtom       : { self.input.LA(2) == LPAREN }?=> IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
+            | { self.input.LA(2) != LPAREN }?=> var^
             | NUMBER^
             | STRINGLIT^
             | boolean^
-            | IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
             | NEW^ type LSQUARE! NUMBER RSQUARE!
             ;
@@ -187,10 +189,12 @@ OR          : '||';
 LEQ         : '<=';
 GT          : '>';
 DOT         : '.';
+COLON       : ':';
 RETURN      : 'return';
 IF          : 'if';
 ELSE        : 'else';
 WHILE       : 'while';
+FOR         : 'for';
 INT         : 'int';
 STRING      : 'string';
 BOOLEAN     : 'boolean';

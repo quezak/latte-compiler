@@ -8,7 +8,7 @@ import abc
 import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
-from LatteUtils import Symbol, FunSymbol, DataType
+from LatteUtils import Symbol, FunSymbol, DataType, DeclArg
 from LatteErrors import Status, TypecheckError, InternalError
 from Utils import switch
 
@@ -74,12 +74,16 @@ class LatteTree(object):
 
     def has_symbol(self, name):
         """ Check if there is a symbol with a given name declared. """
+        if hasattr(self, 'scope_override'):
+            return self.scope_override().has_symbol(name)
         if name in self.symbols:
             return True
         return (self.parent) and (self.parent.has_symbol(name))
 
     def symbol(self, name):
         """ Return the symbol with given name or None, if there is none. """
+        if hasattr(self, 'scope_override'):
+            return self.scope_override().symbol(name)
         if name in self.symbols:
             return self.symbols[name]
         if self.parent:
@@ -359,7 +363,7 @@ class StmtTree(LatteTree):
         # For if/while -- don't check the condition.
         for i in xrange(len(self.children)):
             ch = self.children[i]
-            if (isinstance(ch, ExprTree) and ch.value_type.type != LP.VOID and
+            if (isinstance(ch, ExprTree) and ch.value_type and ch.value_type.type != LP.VOID and
                     (self.type.type == LP.BLOCK or
                      (self.type.type in [LP.IF, LP.WHILE] and i > 0)
                      )):
@@ -402,6 +406,69 @@ class BlockTree(StmtTree):
                     self.children[i+1].warn_unreachable_code(reason=err)
                 return ret_stmt
         return None
+
+# foreach loop ##################################################################################
+class ForTree(BlockTree):
+    """ Node representing a foreach loop -- deriving from Block to have its own scope.
+    
+    This node is used only for construction, and then transforms itself into an equivalent while
+    loop, e.g. `for (int i : t)` stmt becomes: `{ int _c; while (_c < t.length) { stmt; _c++; } }`
+    """
+    def __init__(self, **kwargs):
+        super(BlockTree, self).__init__(LP.FOR, **kwargs)  # super-super intentional
+        # children will be: decl, expr (the array), stmt (loop body)
+
+    def check_return(self):
+        # Only the loop body needs to be checked for returns.
+        if len(self.children) > 2:
+            return self.children[2].check_return()
+        return None
+
+    def add_stmt(self, tree):
+        super(ForTree, self).add_stmt(tree)
+
+    def check_types(self):
+        # Array expr added: fix symbol lookup for case 'int[] i; for (int i : i) ...'
+        self.array_expr.scope_override = lambda: self.parent
+        # Expect that the child expr has type array(type of the decl child)
+        dtype = self.children[0].decl_type.type.id
+        self.check_children_types()
+        self.array_expr.expect_type(Symbol('', DataType.mkarray(dtype)))
+        self.array_expr.check_types()
+
+    def morph_into_block(self):
+        """ Convert the current node into a BlockTree with an equivalent while loop inside. """
+        old_children = list(self.children)
+        self.children = []
+        self.array_expr = old_children[1]
+        # [1] Add declarations for the loop counter and loop value.
+        self.add_stmt(old_children[0])
+        counter_decl = DeclTree(LP.INT)
+        counter_decl.add_item(DeclArg(Builtins.FOR_COUNTER, self.pos))  # = 0 by default
+        self.add_stmt(counter_decl)
+        # TODO fix for expression returning array
+        array = old_children[1].value
+        loop_var = old_children[0].items[0].name
+        # [2a] condition: counter < array.length
+        while_cond = BinopTree(LP.LT, VarTree(LP.IDENT, Builtins.FOR_COUNTER),
+                              VarTree(LP.ATTR, Builtins.LENGTH, obj=array))
+        while_cond.children[1].scope_override = lambda: self.parent
+        # [2b] assign loop_var = array[counter]
+        while_body = BlockTree()
+        while_body.add_stmt(StmtTree(LP.ASSIGN, children=[
+            VarTree(LP.IDENT, loop_var),
+            VarTree(LP.ELEM, None, obj=array, children=[VarTree(LP.IDENT, Builtins.FOR_COUNTER)])
+        ]))
+        while_body.children[0].children[1].scope_override = lambda: self.parent
+        while_body.children[0].children[1].children[0].scope_override = lambda: self
+        # [2c] insert for loop body
+        if len(old_children) > 2:
+            while_body.add_stmt(old_children[2])
+        # [2d] increment counter
+        while_body.add_stmt(StmtTree(LP.INCR, children=[VarTree(LP.IDENT, Builtins.FOR_COUNTER)]))
+        # [3] Add the loop to the block.
+        self.add_stmt(StmtTree(LP.WHILE, children=[while_cond, while_body]))
+        self.type = Symbol('', LP.BLOCK, Status.get_cur_pos())
 
 
 # declaration ###################################################################################
@@ -584,7 +651,7 @@ class VarTree(LiteralTree):
                         Status.add_error(TypecheckError(
                             'invalid attribute `%s` for type `%s`' % (self.value, str(sym.type)),
                             self.pos))
-                else:
+                elif sym.type != LP.TYPE_ERROR:
                     raise InternalError('ATTR for non-array type ' + str(sym.type))
                 break
             if case(LP.ELEM):
@@ -592,7 +659,7 @@ class VarTree(LiteralTree):
                 if sym.type == LP.ARRAY:
                     self.children[0].expect_type(Symbol('', LP.INT))
                     self.set_value_type(Symbol('', sym.type.subtype, self.pos))
-                else:
+                elif sym.type != LP.TYPE_ERROR:
                     Status.add_error(TypecheckError(
                         '`operator[]` for non-array type `%s`' % str(sym.type), self.pos))
                 break

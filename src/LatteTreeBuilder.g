@@ -105,8 +105,15 @@ stmt returns [lt=StmtTree()]
             (ifelse { $lt.add_child($ifelse.lt); })?
        )
     | ^(WHILE expr
-            { $lt = StmtTree(LP.WHILE, children=[$expr.lt]); }
+            { $lt = StmtTree(WHILE, children=[$expr.lt]); }
             (s=stmt { $lt.add_child($s.lt); })?
+       )
+    | ^(FOR { $lt = ForTree(); }
+            type { $lt.add_stmt(DeclTree($type.dt)); }
+            ditem { $lt.children[0].add_item($ditem.item); }
+            expr { $lt.add_stmt($expr.lt); }
+            (s=stmt { $lt.add_stmt($s.lt); })?
+            { $lt.morph_into_block(); }
        )
     | expr
         { $lt = $expr.lt; }
