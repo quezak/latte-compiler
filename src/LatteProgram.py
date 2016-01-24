@@ -408,8 +408,8 @@ class VarCode(LiteralCode):
                        dest=Loc.reg('d'))  # array base address
         # Calculate the elem address -- with offset +1 because of array size stored at 0.
         self.add_instr(CC.LEA, src=Loc.mem(Loc.reg_d, offset=CC.var_size,
-                                           idx=Loc.reg('a'), mult=CC.var_size),
-                       dest=Loc.reg('a'))
+                                           idx=Loc.reg_a, mult=CC.var_size),
+                       dest=Loc.reg('a'), drop_reg1=Loc.reg('a'), drop_reg2=Loc.reg('d'))
         self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_a), dest=dest_reg)  # load element
 
     def is_constant(self):

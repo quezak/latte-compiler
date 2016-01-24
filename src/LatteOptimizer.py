@@ -274,6 +274,7 @@ class LatteOptimizer(object):
                 # TODO two const in IF_JUMP
                 if (self._cp_two_const_operator(pos, code) or
                         self._cp_apply_value_from_pocket(pos, code) or
+                        self._cp_drop_marked_registers(pos, code) or
                         self._cp_overwrite_pocket_values(pos, code) or
                         self._cp_empty_pocket_if_needed(pos, code)):
                     continue
@@ -361,6 +362,16 @@ class LatteOptimizer(object):
                 attr, code[attr].value, pos, self.pocket[code[attr]].value))
             code[attr] = self.pocket[code[attr]]
             self.prop_consts += 1
+
+    def _cp_drop_marked_registers(self, pos, code):
+        """ Constant propagation: drop each register passed in drop_reg* attribute -- to be used
+        when a code uses that register indirectly or just needs the value to be in register. """
+        to_apply = {}
+        for attr, value in code.iteritems():
+            if attr.startswith('drop_reg') and value in self.pocket:
+                to_apply[value] = self.pocket[value]
+        if len(to_apply):
+            self._add_to_apply_pocket(pos, to_apply)
 
     def _cp_overwrite_pocket_values(self, pos, code):
         """ Constant propagation: if a register is being assigned, delete its entry in pocket."""
