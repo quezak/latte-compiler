@@ -328,10 +328,12 @@ class StmtTree(LatteTree):
 
     def check_types(self):
         for case in switch(self.type.type):
-            if case(LP.ASSIGN):  # Children: ident, expr, check if types match.
+            if case(LP.ASSIGN):  # Children: var, expr, check if types match.
+                self.children[0].check_settable()
                 self.children[1].expect_type(self.children[0].get_type())
                 break
-            if case(LP.INCR, LP.DECR):  # Child: ident, expected type: int.
+            if case(LP.INCR, LP.DECR):  # Child: var, expected type: int.
+                self.children[0].check_settable()
                 Symbol('', LP.INT).check_with(self.children[0].get_type(), self.pos)
                 break
             if case(LP.RETURN):  # Check if returned value type matches the function declaration.
@@ -580,7 +582,8 @@ class VarTree(LiteralTree):
                         self.set_value_type(Symbol('', LP.INT, self.pos))
                     else:
                         Status.add_error(TypecheckError(
-                            'invalid attribute `%s` for type `%s`' % (self.value, str(sym.type))))
+                            'invalid attribute `%s` for type `%s`' % (self.value, str(sym.type)),
+                            self.pos))
                 else:
                     raise InternalError('ATTR for non-array type ' + str(sym.type))
                 break
@@ -591,11 +594,33 @@ class VarTree(LiteralTree):
                     self.set_value_type(Symbol('', sym.type.subtype, self.pos))
                 else:
                     Status.add_error(TypecheckError(
-                        '`operator[]` for non-array type `%s`' % str(sym.type)))
+                        '`operator[]` for non-array type `%s`' % str(sym.type), self.pos))
                 break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
         return self.value_type
+
+    def settable(self):
+        """ Check whether the variable can be assigned (e.g. tab.length can't). """
+        for case in switch(self.type.type):
+            if case(LP.ATTR):
+                sym = self._check_symbol(self.obj)
+                return not (sym.type == LP.ARRAY and self.value == Builtins.LENGTH)
+        return True
+
+    def __str__(self):
+        for case in switch(self.type.type):
+            if case(LP.IDENT):
+                return 'variable `%s`' % self.value
+            if case(LP.ATTR):
+                return 'field `%s.%s`' % (self.obj, self.value)
+            if case(LP.ELEM):
+                return 'element of array `%s`' % self.obj
+
+    def check_settable(self):
+        """ Check assignability and post an error if needed. """
+        if not self.settable():
+            Status.add_error(TypecheckError(str(self) + ' cannot be set', self.pos))
 
 
 # unary operator ################################################################################

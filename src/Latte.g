@@ -110,15 +110,14 @@ block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
 stmt        : STMTSEP!
             | block
             | type ditemlist STMTSEP -> ^(DECL type ditemlist)
-            | IDENT ASSIGN^ expr STMTSEP!
-            | IDENT INCR^ STMTSEP!
-            | IDENT DECR^ STMTSEP!
-            | RETURN STMTSEP -> ^(RETURN)
-            | RETURN^ expr STMTSEP!
+            | (var)=> var_stmt STMTSEP!
+            | RETURN^ expr? STMTSEP!
             | IF^ condition stmt ((ELSE)=>ifelse)?
             | WHILE^ condition stmt
             | expr STMTSEP!
             ;
+
+var_stmt    : var ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^);
 
 ditemlist   : ditem (LISTSEP! ditem)*;
 ditem       : IDENT -> ^(DITEM IDENT)

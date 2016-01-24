@@ -192,15 +192,19 @@ class StmtCode(LatteCode):
             if case(LP.ASSIGN):
                 # compute assigned value on stack
                 self.add_child_by_idx(1)
-                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                # compute the destination address, if needed
+                self.add_child_by_idx(0, addr_only=True)
                 # put the value into destination address
-                dest_sym = self.tree.symbol(self.children[0].value)
-                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.sym(dest_sym))
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                var_loc = self.children[0].get_loc()
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=var_loc)
                 break
             if case(LP.INCR, LP.DECR):
                 op = CC.ADD if self.type.type == LP.INCR else CC.SUB
-                sym = self.tree.symbol(self.children[0].value)
-                self.add_instr(op, lhs=Loc.const(1), rhs=Loc.sym(sym))
+                # compute the destination address, if needed
+                self.add_child_by_idx(0, addr_only=True)
+                var_loc = self.children[0].get_loc()
+                self.add_instr(op, lhs=Loc.const(1), rhs=var_loc)
                 break
             if case():
                 raise NotImplementedError('unknown statement type: %s' % str(self.type))
@@ -378,30 +382,37 @@ class VarCode(LiteralCode):
                        op='je', label=kwargs['on_false'])
         self.add_instr(CC.JUMP, label=kwargs['on_true'])
 
-    def _gen_code_as_value(self, **kwargs):
+    def _gen_code_as_value(self, addr_only=False, **kwargs):
+        # If addr_only is set, don't push the value, stop after its location is computed.
         for case in switch(self.type.type):
             if case(LP.IDENT):
-                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
-                               dest=Loc.reg('a'))
+                if addr_only:
+                    return
+                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)), dest=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.ATTR):
                 sym = self.tree.symbol(self.obj)
                 if sym.type == LP.ARRAY and self.value == Builtins.LENGTH:
                     # Array length is stored in first element of its memory block.
-                    self.add_instr(CC.MOV, src=Loc.sym(sym), dest=Loc.reg('a'))
-                    self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_a), dest=Loc.reg('a'))
-                    self.add_instr(CC.PUSH, src=Loc.reg('a'))
+                    self.add_instr(CC.MOV, src=Loc.sym(sym), dest=Loc.reg('d'))
+                    if addr_only:
+                        return
+                    self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=Loc.reg('d'))
+                    self.add_instr(CC.PUSH, src=Loc.reg('d'))
                 else:
                     raise InternalError('invalid attr %s for type %s' % (self.value, str(obj.type)))
                 break
             if case(LP.ELEM):
-                self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
+                self._gen_code_load_array_elem(dest_reg=Loc.reg('a'), addr_only=addr_only)
+                if addr_only:
+                    return
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
 
-    def _gen_code_load_array_elem(self, dest_reg):
+    def _gen_code_load_array_elem(self, dest_reg, addr_only=False):
         self.add_child_by_idx(0)  # evaluate the array index
         self.add_instr(CC.POP, dest=Loc.reg('a'))
         self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.obj)),
@@ -409,11 +420,23 @@ class VarCode(LiteralCode):
         # Calculate the elem address -- with offset +1 because of array size stored at 0.
         self.add_instr(CC.LEA, src=Loc.mem(Loc.reg_d, offset=CC.var_size,
                                            idx=Loc.reg_a, mult=CC.var_size),
-                       dest=Loc.reg('a'), drop_reg1=Loc.reg('a'), drop_reg2=Loc.reg('d'))
-        self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_a), dest=dest_reg)  # load element
+                       dest=Loc.reg('d'), drop_reg1=Loc.reg('a'), drop_reg2=Loc.reg('d'))
+        if addr_only:
+            return
+        self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=dest_reg)  # load element
 
     def is_constant(self):
         return False
+
+    def get_loc(self):
+        """ Return where the variable is located after the generated code is executed. """
+        for case in switch(self.type.type):
+            if case(LP.IDENT):
+                return Loc.sym(self.tree.symbol(self.value))
+            if case(LP.ATTR):
+                return Loc.mem(Loc.reg_d)
+            if case(LP.ELEM):
+                return Loc.mem(Loc.reg_d)
 
 
 # unary operator ################################################################################
