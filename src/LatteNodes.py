@@ -537,14 +537,22 @@ class LiteralTree(ExprTree):
 class VarTree(LiteralTree):
     def __init__(self, typeid, value, **kwargs):
         super(VarTree, self).__init__(typeid, value, **kwargs)
-        if 'obj' in kwargs:
+        if self.type.type in [LP.ATTR, LP.ELEM]:
             self.obj = kwargs['obj']
 
     def print_tree(self):
-        value_str = self.value
-        if self.type.type == LP.ATTR:
-            value_str = self.obj + '.' + value_str
-        self._print_indented('= %s %s' % (str(self.type), value_str))
+        for case in switch(self.type.type):
+            if case(LP.IDENT):
+                self._print_indented('= IDENT %s' % self.value)
+                break
+            if case(LP.ATTR):
+                self._print_indented('= ATTR %s.%s' % (self.obj, self.value))
+                break
+            if case(LP.ELEM):
+                self._print_indented('[ ELEM %s' % self.obj)
+                self._print_children()
+                self._print_indented('] ELEM %s' % self.obj)
+                break
 
     def _check_symbol(self, name):
         if not self.has_symbol(name):
@@ -554,6 +562,7 @@ class VarTree(LiteralTree):
                 'each undeclared identifier is reported only once in each function'))
             # add a dummy type-error symbol to prevent further errors about this variable
             self.get_cur_fun().add_symbol(Symbol(name, LP.TYPE_ERROR, self.pos))
+        return self.symbol(name)
 
     def get_type(self):
         # return immediately if the type is already calculated
@@ -562,12 +571,10 @@ class VarTree(LiteralTree):
         # otherwise, set the type as the variable was declared
         for case in switch(self.type.type):
             if case(LP.IDENT):
-                self._check_symbol(self.value)
-                self.set_value_type(self.symbol(self.value))
+                self.set_value_type(self._check_symbol(self.value))
                 break
             if case(LP.ATTR):
-                self._check_symbol(self.obj)
-                sym = self.symbol(self.obj)
+                sym = self._check_symbol(self.obj)
                 if sym.type == LP.ARRAY:
                     if self.value == Builtins.LENGTH:
                         self.set_value_type(Symbol('', LP.INT, self.pos))
@@ -577,9 +584,19 @@ class VarTree(LiteralTree):
                 else:
                     raise InternalError('ATTR for non-array type ' + str(sym.type))
                 break
+            if case(LP.ELEM):
+                sym = self._check_symbol(self.obj)
+                if sym.type == LP.ARRAY:
+                    self.children[0].expect_type(Symbol('', LP.INT))
+                    self.set_value_type(Symbol('', sym.type.subtype, self.pos))
+                else:
+                    Status.add_error(TypecheckError(
+                        '`operator[]` for non-array type `%s`' % str(sym.type)))
+                break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
         return self.value_type
+
 
 # unary operator ################################################################################
 class UnopTree(ExprTree):

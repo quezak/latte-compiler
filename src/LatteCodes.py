@@ -122,6 +122,9 @@ class Codes(object):
             if case(cls.MOV):
                 yield cls._str_asm('movl', [str(code['src']), str(code['dest'])], code)
                 return
+            if case(cls.LEA):
+                yield cls._str_asm('leal', [str(code['src']), str(code['dest'])], code)
+                return
             if case(cls.JUMP):
                 yield cls._str_asm('jmp', [code['label']], code)
                 return
@@ -264,12 +267,14 @@ class Loc(object):
         return cls(cls.REG, which)
 
     @classmethod
-    def mem(cls, addr, offset=None):
+    def mem(cls, addr, offset=None, idx=None, mult=None):
+        """ Either copy full address from addr or construct memory location from
+        addr, offset, idx, mult. """
         if addr == cls.ANY:
             return cls(cls.MEM, cls.ANY)
         if addr[-1] == ')':  # already computed address
             return cls(cls.MEM, addr)
-        return cls(cls.MEM, cls.mkaddr(addr, offset))
+        return cls(cls.MEM, cls.mkaddr(addr, offset, idx, mult))
 
     @classmethod
     def sym(cls, symbol):
@@ -295,8 +300,14 @@ class Loc(object):
         return cls.mkaddr(cls.ebp, Codes.var_size * (-1-n))
 
     @staticmethod
-    def mkaddr(pos, offset=None):
-        return '%s(%s)' % (str(offset or ''), pos)
+    def mkaddr(base, offset=None, idx=None, mult=None):
+        """ Construct a memory location: offset(base, idx, mult) """
+        return '%s(%s%s%s)' % (
+            str(offset) if offset else '',
+             base,
+             ', %s' % idx if idx else '',
+             ', %d' % mult if mult else '',
+        )
 
     def is_constant(self):
         return self.type == self.CONST or self.type == self.STRINGLIT

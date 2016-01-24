@@ -355,22 +355,28 @@ class VarCode(LiteralCode):
     def __init__(self, tree, **kwargs):
         super(VarCode, self).__init__(tree, **kwargs)
         self.value = tree.value
-        if self.type.type == LP.ATTR:
+        if self.type.type in [LP.ATTR, LP.ELEM]:
             self.obj = tree.obj
+        for child in tree.children:
+            self.add_child(ExprFactory(child))
 
     def _gen_code_in_cond(self, **kwargs):
+        # [0]: load the bool value into a register.
         for case in switch(self.type.type):
             if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
                 self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
                                dest=Loc.reg('a'))
-                # note: comparing with 0, so on equality jump to false!
-                self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
-                               op='je', label=kwargs['on_false'])
-                self.add_instr(CC.JUMP, label=kwargs['on_true'])
+                break
+            if case(LP.ELEM) and self.tree.symbol(self.obj).type.subtype == LP.BOOLEAN:
+                self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
                 break
             if case():
                 raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
                     str(self.type), self.tree.pos))
+        # [1]: Compare and jump (note: comparing with 0, so on equality jump to false!)
+        self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
+                       op='je', label=kwargs['on_false'])
+        self.add_instr(CC.JUMP, label=kwargs['on_true'])
 
     def _gen_code_as_value(self, **kwargs):
         for case in switch(self.type.type):
@@ -389,8 +395,22 @@ class VarCode(LiteralCode):
                 else:
                     raise InternalError('invalid attr %s for type %s' % (self.value, str(obj.type)))
                 break
+            if case(LP.ELEM):
+                self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
+                break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
+
+    def _gen_code_load_array_elem(self, dest_reg):
+        self.add_child_by_idx(0)  # evaluate the array index
+        self.add_instr(CC.POP, dest=Loc.reg('a'))
+        self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.obj)),
+                       dest=Loc.reg('d'))  # array base address
+        # Calculate the elem address -- with offset +1 because of array size stored at 0.
+        self.add_instr(CC.LEA, src=Loc.mem(Loc.reg_d, offset=CC.var_size,
+                                           idx=Loc.reg('a'), mult=CC.var_size),
+                       dest=Loc.reg('a'))
+        self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_a), dest=dest_reg)  # load element
 
     def is_constant(self):
         return False
@@ -647,7 +667,7 @@ def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
         if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.ARRAY):
             return LiteralCode
-        if case(LP.IDENT, LP.ATTR):
+        if case(LP.IDENT, LP.ATTR, LP.ELEM):
             return VarCode
         if case(LP.NOT, LP.NEG):
             return UnopCode

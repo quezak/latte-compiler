@@ -128,6 +128,8 @@ ifelse returns [lt=StmtTree()]
 var returns [lt]
     : ^(ATTR obj=IDENT attr=IDENT)
         { $lt = VarTree(ATTR, $attr.text, obj=$obj.text); }
+    | ^(ELEM obj=IDENT expr)
+        { $lt = VarTree(ELEM, None, obj=$obj.text, children=[$expr.lt]); }
     | IDENT
         { $lt = VarTree(IDENT, $IDENT.text); }
     ;

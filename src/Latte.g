@@ -25,6 +25,7 @@ tokens {
     TYPE_ERROR;
     ARRAY;
     ATTR;
+    ELEM;
 }
 
 // Header pasted on the top of parser file.
@@ -131,6 +132,7 @@ ifelse      : ELSE^ stmt;
 boolean     : TRUE | FALSE;
 
 var         : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
+            | obj=IDENT LSQUARE expr RSQUARE -> ^(ELEM $obj expr)
             | IDENT^
             ;
 
