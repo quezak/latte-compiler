@@ -130,6 +130,12 @@ class LatteTree(object):
             return None
         return self.parent.get_cur_block()
 
+    def get_class(self, name):
+        """ Returns the class definition node for a class name. """
+        if not self.parent:
+            return None
+        return self.parent.get_class(name)
+
     def _clear_symbols(self):
         """ Clears the symbol tables. """
         self.symbols = dict()
@@ -143,6 +149,7 @@ class ProgTree(LatteTree):
     def __init__(self, **kwargs):
         super(ProgTree, self).__init__(**kwargs)
         self.add_builtin_symbols()
+        self.classes = {}
 
     def add_builtin_symbols(self):
         """ Adds declarations of builtin symbol to the main program node. """
@@ -171,6 +178,10 @@ class ProgTree(LatteTree):
               (class_tree.name, len(class_tree.children), class_tree.pos))
         self.add_child(class_tree)
         self.add_symbol(class_tree.type)
+        self.classes[class_tree.name] = class_tree  # class definition lookup dict
+
+    def get_class(self, name):
+        return self.classes.get(name, None)
 
     def print_tree(self):
         if not self.level:
@@ -197,6 +208,10 @@ class ProgTree(LatteTree):
             if sym.is_function() and not sym.is_builtin and sym.call_counter == 0:
                 Status.add_warning(TypecheckError(
                     'function `%s` defined but never called' % sym.name, sym.pos))
+        for cls in self.classes.values():
+            if cls.new_count == 0:
+                Status.add_warning(TypecheckError(
+                    'class `%s` defined but never instantiated' % cls.name, cls.pos))
         # Checking the symbols builds symbol tables, so we need to clear them before continuing.
         self._clear_symbols()
 
@@ -269,15 +284,22 @@ class ClassTree(LatteTree):
     def __init__(self, name, **kwargs):
         super(ClassTree, self).__init__(**kwargs)
         self.name = name
-        self.type = Symbol(self.name, DataType.mkclass(self.name), self.pos)
+        self.type = Symbol(self.name, DataType.mkobject(self.name), self.pos)
+        self.var_count = 0
+        self.new_count = 0
     
     def add_member_decl(self, tree):
         self.add_child(tree)
+        self.var_count += len(tree.items)
 
     def print_tree(self):
         self._print_indented('>CLASS %s' % self.name)
         self._print_children()
         self._print_indented('<CLASS %s' % self.name)
+
+    def get_cur_block(self):
+        """ For typechecking, let all members appear static with the class is their scope. """
+        return self
 
 
 # statement #####################################################################################
@@ -518,7 +540,8 @@ class DeclTree(StmtTree):
                     break
                 if case(LP.VOID):
                     return  # just to avoid errors
-                if case(LP.ARRAY):
+                if case(LP.ARRAY, LP.OBJECT):
+                    # implicit NULL for declared but unassigned objects
                     item.expr = LiteralTree(self.decl_type.type, None)
                     break
                 if case():
@@ -844,22 +867,51 @@ class NewTree(ExprTree):
     """ Node for calls to `new` operator. """
     def __init__(self, value_type, **kwargs):
         super(NewTree, self).__init__(LP.NEW, **kwargs)
+        # At construction, a non-array type is passed. If the `new` builds an array,
+        # set_array_size() will be called later and type will be switched to Array.
         sym = Symbol('', value_type, self.pos)
         self.set_value_type(sym)
+        if self.value_type.type == LP.OBJECT:
+            self.classname = self.value_type.type.subtype
+
+    def set_array_size(self, expr):
+        # TODO support arrays of objects
+        if self.value_type.type not in DataType.PLAIN_TYPES:
+            Status.add_error(TypecheckError('object arrays not yet supported'), self.pos)
+            self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
+            return
+        self.add_child(expr)
+        self.set_value_type(Symbol('', DataType.mkarray(self.value_type.type.id), self.pos))
 
     def print_tree(self):
-        self._print_indented('*> new %s' % str(self.value_type))
-        self._print_children()
-        self._print_indented('*< new %s' % str(self.value_type))
+        if len(self.children):
+            self._print_indented('*> new %s' % str(self.value_type))
+            self._print_children()
+            self._print_indented('*< new %s' % str(self.value_type))
+        else:
+            self._print_indented('*= new %s' % str(self.value_type))
 
     def check_types(self):
         for case in switch(self.value_type.type):
             if case(LP.ARRAY):
+                if len(self.children) < 1:
+                    Status.add_error(TypecheckError('`new` for array without size', self.pos))
+                    break
                 self.children[0].expect_type(Symbol('', LP.INT))
+                self.check_children_types()
+                break
+            if case(LP.OBJECT):
+                cls = self.get_class(self.classname)
+                if not cls:
+                    Status.add_error(TypecheckError('unknown type `%s`' % self.classname, self.pos))
+                elif len(self.children):
+                    raise InternalError('size for `new` with class at %s' % self.pos)
+                cls.new_count += 1
+            if case(LP.TYPE_ERROR):
                 break
             if case():
-                raise InternalError('NEW for invalid type `%s`' % str(self.value_type))
-        self.check_children_types()
+                Status.add_error(TypecheckError('`new` for non-class type `%s`' %
+                                                str(self.value_type), self.pos))
 
 
 # helper class to mark code after an infinite loop unreachable

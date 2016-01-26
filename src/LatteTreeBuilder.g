@@ -67,7 +67,7 @@ prog returns [lt=ProgTree()]
 
 fundef returns [lt=FunTree()]
     : ^(FUNDEF
-            type { $lt.set_ret_type($type.dt); }
+            declType { $lt.set_ret_type($declType.dt); }
             IDENT { $lt.set_name(str($IDENT.text)); }
             (arg { $lt.add_arg($arg.fa); })*
             block { $lt.set_block($block.lt); }
@@ -75,12 +75,16 @@ fundef returns [lt=FunTree()]
     ;
 
 arg returns [fa]
-    : ^(ARG type IDENT) { $fa = FunArg($type.dt, str($IDENT.text)); }
+    : ^(ARG declType IDENT) { $fa = FunArg($declType.dt, str($IDENT.text)); }
     ;
 
-type returns [dt]
+declType returns [dt]
     : ^(ARRAY t=(INT | STRING | BOOLEAN | VOID)) { $dt = DataType.mkarray($t.type); }
-    | t=(INT | STRING | BOOLEAN | VOID) { $dt = DataType($t.type); }
+    | plainType { $dt = $plainType.dt; }
+    ;
+plainType returns [dt]
+    : t=(INT | STRING | BOOLEAN | VOID) { $dt = DataType($t.type); }
+    | ^(OBJECT IDENT) { $dt = DataType.mkobject(str($IDENT.text)); }
     ;
 
 block returns [lt=BlockTree()]
@@ -120,7 +124,7 @@ stmt returns [lt]
             (s=stmt { $lt.add_child($s.lt); })?
        )
     | ^(FOR { $lt = ForTree(); }
-            type { $lt.add_stmt(DeclTree($type.dt)); }
+            declType { $lt.add_stmt(DeclTree($declType.dt)); }
             ditem { $lt.children[0].add_item($ditem.item); }
             expr { $lt.add_stmt($expr.lt); }
             (s=stmt { $lt.add_stmt($s.lt); })?
@@ -131,7 +135,7 @@ stmt returns [lt]
     ;
 
 decl returns [lt]
-    : ^(DECL type { $lt = DeclTree($type.dt); }
+    : ^(DECL declType { $lt = DeclTree($declType.dt); }
             (ditem { $lt.add_item($ditem.item); })+
        )
     ;
@@ -176,6 +180,8 @@ expr returns [lt]
     | ^(FUNCALL IDENT { $lt = FuncallTree(str($IDENT.text)); }
             (e=expr { $lt.add_child($e.lt); } )*
        )
-    | ^(NEW type size=expr)
-        { $lt = NewTree(DataType.mkarray($type.dt.id), children=[$size.lt]); }
+    | ^(NEW plainType
+        { $lt = NewTree($plainType.dt, pos_off=-2); }
+            (size=expr { $lt.set_array_size($size.lt); })?
+       )
     ;

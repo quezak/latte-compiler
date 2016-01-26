@@ -26,6 +26,7 @@ tokens {
     ARRAY;
     ATTR;
     ELEM;
+    OBJECT;
 }
 
 // Header pasted on the top of parser file.
@@ -103,13 +104,16 @@ def main(argv):
 // programs ------------------------------------------------
 prog        : globdef* EOF -> ^(PROG globdef*);
 globdef     : fundef | classdef;
-fundef      : type IDENT arglist block -> ^(FUNDEF type IDENT arglist? block);
+fundef      : declType IDENT arglist block -> ^(FUNDEF declType IDENT arglist? block);
 arglist     : LPAREN! (arg (LISTSEP! arg)* )? RPAREN!;
-arg         : type IDENT -> ^(ARG type IDENT);
-type        : plainType^
+arg         : declType IDENT -> ^(ARG declType IDENT);
+// TODO support arrays of objects
+declType    : plainType^
             | plainType LSQUARE RSQUARE -> ^(ARRAY plainType)
             ;
-plainType   : INT | STRING | BOOLEAN | VOID;
+plainType   : INT | STRING | BOOLEAN | VOID
+            | IDENT -> ^(OBJECT IDENT)
+            ;
 classdef    : CLASS^ IDENT LBRACE! (decl)* RBRACE!;
 
 // statements ----------------------------------------------
@@ -121,10 +125,10 @@ stmt        : STMTSEP!
             | RETURN^ expr? STMTSEP!
             | IF^ condition stmt ((ELSE)=>ifelse)?
             | WHILE^ condition stmt
-            | FOR^ LPAREN! type ditem COLON! expr RPAREN! stmt
+            | FOR^ LPAREN! declType ditem COLON! expr RPAREN! stmt
             ;
 
-decl        : type ditemlist STMTSEP -> ^(DECL type ditemlist);
+decl        : declType ditemlist STMTSEP -> ^(DECL declType ditemlist);
 
 varStmt     : expr ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^)?;
 
@@ -145,9 +149,9 @@ varSuffix   : DOT attr=IDENT -> ^(ATTR $attr)
 eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
             | IDENT^
-            | NEW^ type LSQUARE! expr RSQUARE!
             ;
 ePrimary    : eVar^ (varSuffix^)?
+            | NEW^ plainType (LSQUARE! expr RSQUARE!)?
             | NUMBER^
             | STRINGLIT^
             | boolean^

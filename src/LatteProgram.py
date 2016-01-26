@@ -650,6 +650,8 @@ class NewCode(ExprCode):
         for child in tree.children:
             self.add_child(ExprFactory(child))
         self.value_type = tree.value_type
+        if self.value_type.type == LP.OBJECT:
+            self.classname = tree.classname
 
     def gen_code(self, **kwargs):
         for case in switch(self.value_type.type):
@@ -671,8 +673,18 @@ class NewCode(ExprCode):
                 # Push the memory pointer as expression result.
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
+            if case(LP.OBJECT):
+                # Allocate required space.
+                cls = self.tree.get_class(self.classname)
+                self.add_instr(CC.PUSH, src=Loc.const(cls.var_count * CC.var_size))
+                self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
+                self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'))
+                # Push the memory pointer as expression result.
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
+                break
             if case():
                 raise InternalError('invalid type for new operator: ' + str(self.value_type))
+        self.check_unused_result()
 
 
 # factories #####################################################################################
@@ -696,7 +708,7 @@ def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
         if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.ARRAY):
             return LiteralCode
-        if case(LP.IDENT, LP.ATTR, LP.ELEM):
+        if case(LP.IDENT, LP.ATTR, LP.ELEM, LP.OBJECT):
             return VarCode
         if case(LP.NOT, LP.NEG):
             return UnopCode
