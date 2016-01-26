@@ -287,19 +287,35 @@ class ClassTree(LatteTree):
         self.type = Symbol(self.name, DataType.mkobject(self.name), self.pos)
         self.var_count = 0
         self.new_count = 0
+        self.members = {}  # map from member name to index (used for memory offset calculation)
     
     def add_member_decl(self, tree):
         self.add_child(tree)
         self.var_count += len(tree.items)
+        for item in tree.items:
+            self.members[item.name] = len(self.members)
 
     def print_tree(self):
         self._print_indented('>CLASS %s' % self.name)
-        self._print_children()
+        for decl in self.children:
+            for item in decl.items:
+                self._print_indented('  = #%d: %s %s' % (self.members[item.name],
+                                                         str(decl.decl_type), item.name))
         self._print_indented('<CLASS %s' % self.name)
 
     def get_cur_block(self):
-        """ For typechecking, let all members appear static with the class is their scope. """
+        """ For typechecking, let all members appear static with the class as their scope. """
         return self
+
+    def _check_member(self, name, pos):
+        if name not in self.symbols:  # search *only* in the current class!
+            Status.add_error(TypecheckError(
+                'use of undeclared member `%s.%s`' % (self.name, name), pos))
+            Status.add_note(TypecheckError(
+                'each undeclared member is reported only once in each class'))
+            # add a dummy type-error symbol to prevent further errors about this variable
+            self.add_symbol(Symbol(name, LP.TYPE_ERROR, pos))
+        return self.symbols[name]
 
 
 # statement #####################################################################################
@@ -379,7 +395,6 @@ class StmtTree(LatteTree):
     def check_types(self):
         for case in switch(self.type.type):
             if case(LP.ASSIGN):  # Children: var, expr, check if types match.
-                self.children[0].check_settable()
                 self.children[1].expect_type(self.children[0].get_type())
                 break
             if case(LP.INCR, LP.DECR):  # Child: var, expected type: int.
@@ -405,6 +420,8 @@ class StmtTree(LatteTree):
                             'variable declaration not allowed here', child.pos))
                 break
         self.check_children_types()
+        if self.type.type == LP.ASSIGN:
+            self.children[0].check_settable()
         # Warn about unused results -- cases where an non-void expression is used as a statement.
         # For if/while -- don't check the condition.
         for i in xrange(len(self.children)):
@@ -598,7 +615,8 @@ class ExprTree(StmtTree):
         """ Check whether the variable can be assigned (e.g. tab.length can't). """
         for case in switch(self.type.type):
             if case(LP.ATTR):
-                return not (self.value_type.type == LP.ARRAY and self.value == Builtins.LENGTH)
+                return self.value_type.type == LP.OBJECT or (
+                    not (self.value_type.type == LP.ARRAY and self.value == Builtins.LENGTH))
             if case(LP.IDENT, LP.ELEM):
                 return True
         return False
@@ -612,7 +630,7 @@ class ExprTree(StmtTree):
         """ Check whether the variable can have attributes. """
         for case in switch(self.type.type):
             if case(LP.ATTR):
-                return self.obj_type.type == LP.ARRAY
+                return self.obj_type.type in [LP.ARRAY, LP.OBJECT]
         return False
 
 
@@ -728,8 +746,13 @@ class VarTree(LiteralTree):
                         Status.add_error(TypecheckError(
                             'invalid attribute `%s` for type `%s`' % (
                                 self.value, str(self.obj_type)), self.pos))
+                elif self.obj_type.type == LP.OBJECT:
+                    cls = self.get_class(self.obj_type.type.subtype)
+                    self.set_value_type(cls._check_member(self.value, self.pos))
+                    self.classname = self.obj_type.type.subtype
+                    break
                 elif self.obj_type.type != LP.TYPE_ERROR:
-                    raise InternalError('ATTR for non-array type ' + str(self.obj_type))
+                    raise InternalError('ATTR for non-array/class type ' + str(self.obj_type))
                 break
             if case(LP.ELEM):
                 self.children[0].check_types()

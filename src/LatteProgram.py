@@ -372,6 +372,8 @@ class VarCode(LiteralCode):
             if case(LP.ELEM) and self.tree.value_type.type == LP.BOOLEAN:
                 self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
                 break
+            if case(LP.OBJECT) and self.tree.value_type.type == LP.BOOLEAN:
+                self._gen_code_load_member(dest_reg=Loc.reg('a'))
             if case():
                 raise InternalError('jump-expr codes for non-bool %s expression at %s!' % (
                     str(self.type), self.tree.pos))
@@ -398,9 +400,14 @@ class VarCode(LiteralCode):
                         return
                     self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=Loc.reg('d'))
                     self.add_instr(CC.PUSH, src=Loc.reg('d'))
+                elif self.tree.obj_type.type == LP.OBJECT:
+                    self._gen_code_load_member(dest_reg=Loc.reg('d'), addr_only=addr_only)
+                    if addr_only:
+                        return
+                    self.add_instr(CC.PUSH, src=Loc.reg('d'))
                 else:
-                    raise InternalError('invalid attr %s for type %s' % (self.value,
-                                                                         str(self.obj_type)))
+                    raise InternalError('invalid attr `%s` for type `%s`' % (
+                        self.value, str(self.tree.obj_type)))
                 break
             if case(LP.ELEM):
                 self._gen_code_load_array_elem(dest_reg=Loc.reg('d'), addr_only=addr_only)
@@ -411,18 +418,32 @@ class VarCode(LiteralCode):
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
 
+    def _gen_code_load_memory(self, dest_reg, base_ptr, offset=None, idx=None, mult=None,
+                              addr_only=False):
+        """ Evaluate element/member address and get its value. """
+        self.add_instr(CC.LEA, src=Loc.mem(base_ptr, offset=offset, idx=idx, mult=mult),
+                       dest=dest_reg, drop_reg1=Loc.reg('a'), drop_reg2=Loc.reg('d'))
+        if addr_only:
+            return
+        self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=dest_reg)  # load element
+
     def _gen_code_load_array_elem(self, dest_reg, addr_only=False):
         self.add_child_by_idx(0)  # evaluate the array address
         self.add_child_by_idx(1)  # evaluate the array index
         self.add_instr(CC.POP, dest=Loc.reg('a'))
         self.add_instr(CC.POP, dest=Loc.reg('d'))
         # Calculate the elem address -- with offset +1 because of array size stored at 0.
-        self.add_instr(CC.LEA, src=Loc.mem(Loc.reg_d, offset=CC.var_size,
-                                           idx=Loc.reg_a, mult=CC.var_size),
-                       dest=Loc.reg('d'), drop_reg1=Loc.reg('a'), drop_reg2=Loc.reg('d'))
-        if addr_only:
-            return
-        self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=dest_reg)  # load element
+        self._gen_code_load_memory(dest_reg, Loc.reg_d, offset=CC.var_size, idx=Loc.reg_a,
+                                   mult=CC.var_size, addr_only=addr_only)
+
+    def _gen_code_load_member(self, dest_reg, addr_only=False):
+        cls = self.tree.get_class(self.tree.classname)
+        m_idx = cls.members[self.value]
+        self.add_child_by_idx(0)  # evaluate the object's base address
+        self.add_instr(CC.POP, dest=Loc.reg('a'))
+        self.add_instr(CC.MOV, src=Loc.const(m_idx), dest=Loc.reg('d'))  # idx must be a register
+        self._gen_code_load_memory(dest_reg, Loc.reg_a, idx=Loc.reg('d'), mult=CC.var_size,
+                                   addr_only=addr_only)
 
     def is_constant(self):
         return False
