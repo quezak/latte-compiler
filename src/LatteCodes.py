@@ -58,9 +58,6 @@ class Codes(object):
         return cls._CODE_NAMES[type / 10][type % 10]
 
     var_size = 4  # every type uses 4 bytes for now
-    STRCAT_FUNCTION = 'concatString'  # runtime library function for '+' string operator
-    MALLOC_FUNCTION = 'getMemory'  # runtime library functions for allocating memory for objects
-    FREE_FUNCTION = 'freeMemory'
 
     _labels = 1
 
@@ -272,7 +269,7 @@ class Loc(object):
         addr, offset, idx, mult. """
         if addr == cls.ANY:
             return cls(cls.MEM, cls.ANY)
-        if addr[-1] == ')':  # already computed address
+        if len(addr) and addr[-1] == ')':  # already computed address
             return cls(cls.MEM, addr)
         return cls(cls.MEM, cls.mkaddr(addr, offset, idx, mult))
 

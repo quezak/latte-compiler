@@ -79,8 +79,8 @@ class Latc(object):
         """ Generate intermediate code from the tree. """
         debug('------------- BUILD CODE TREE -----------------')
         cls.prog_code = ProgCode(cls.prog_tree)
-        cls.prog_code.gen_code()
         debug('--------------- GEN CODES ---------------------')
+        cls.prog_code.gen_code()
         cls.codes = [i for i in cls.prog_code.codes()]
         if Status.errors() > 0:
             Status.add_error(LatteError('compilation failed'), fatal=True)

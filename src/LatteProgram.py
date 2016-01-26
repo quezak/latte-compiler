@@ -589,7 +589,7 @@ class BinopCode(ExprCode):
             self.add_instr(CC.POP, dest=Loc.reg('d'))
             self.add_instr(CC.PUSH, src=Loc.reg('a'))
             self.add_instr(CC.PUSH, src=Loc.reg('d'))
-        self.add_instr(CC.CALL, label=CC.STRCAT_FUNCTION)
+        self.add_instr(CC.CALL, label=Builtins.STRCAT_FUNCTION)
         self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
         self.add_instr(CC.PUSH, src=Loc.reg('a'))
         # TODO free memory later
@@ -646,20 +646,27 @@ class FuncallCode(ExprCode):
 class NewCode(ExprCode):
     def __init__(self, tree, **kwargs):
         super(NewCode, self).__init__(tree, **kwargs)
+        for child in tree.children:
+            self.add_child(ExprFactory(child))
         self.value_type = tree.value_type
-        if self.value_type.type == LP.ARRAY:
-            self.size = tree.size
 
     def gen_code(self, **kwargs):
         for case in switch(self.value_type.type):
             if case(LP.ARRAY):
+                self.add_child_by_idx(0)  # evaluate array size
+                self.add_instr(CC.POP, dest=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))  # the value needs to be saved later
                 # Convention: array of size N is a block of memory for (N+1) variables, and the
                 # first variable will contain array's size ( = N)
-                mem_size = (self.size + 1) * CC.var_size
-                self.add_instr(CC.PUSH, src=Loc.const(mem_size))
-                self.add_instr(CC.CALL, label=CC.MALLOC_FUNCTION)
+                self.add_instr(CC.LEA, src=Loc.mem('', offset=CC.var_size,
+                                                   idx=Loc.reg_a, mult=CC.var_size),
+                               dest=Loc.reg('a'), drop_reg1=Loc.reg('a'))  # calc memory size
+                self.add_instr(CC.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
+                self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'))
                 # Write the array size into the first index.
-                self.add_instr(CC.MOV, src=Loc.const(self.size), dest=Loc.mem(Loc.reg_a))
+                self.add_instr(CC.POP, dest=Loc.reg('d'))  # load the array size saved earlier
+                self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
                 # Push the memory pointer as expression result.
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break

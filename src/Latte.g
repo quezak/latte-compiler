@@ -43,6 +43,9 @@ class Builtins:
     READ_STRING = 'readString'
     ERROR = 'error'
     MAIN = 'main'
+    STRCAT_FUNCTION = 'concatString'  # runtime library function for '+' string operator
+    MALLOC_FUNCTION = 'getMemory'  # runtime library functions for allocating memory for objects
+    FREE_FUNCTION = 'freeMemory'
     LENGTH = 'length'
     FOR_COUNTER = '__for_counter__'
     FOR_ARRAY = '__for_array__'
@@ -69,7 +72,6 @@ def print_dot_tree(self):
 def displayRecognitionError(self, tokenNames, e):
     """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
-    import ipdb; ipdb.set_trace()
     Status.add_error(ParserError(msg, e.line, e.charPositionInLine))
 }
 
@@ -139,7 +141,7 @@ varSuffix   : DOT attr=IDENT -> ^(ATTR $attr)
 eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
             | IDENT^
-            | NEW^ type LSQUARE! NUMBER RSQUARE!
+            | NEW^ type LSQUARE! expr RSQUARE!
             ;
 ePrimary    : eVar^ (varSuffix^)?
             | NUMBER^
