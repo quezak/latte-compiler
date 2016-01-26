@@ -24,7 +24,8 @@ class DataType(object):
         # TODO remove assertions after testing
         assert(self.id is None or isinstance(self.id, int))
         # TODO allow arrays of non-plain objects
-        assert(self.subtype is None or (self.id == LP.ARRAY and isinstance(self.subtype, int)))
+        assert(self.subtype is None or (self.id == LP.ARRAY and isinstance(self.subtype, int)) or
+               (self.id == LP.CLASS and isinstance(self.subtype, str)))
     
     @classmethod
     def get_typeid(cls, type):
@@ -38,6 +39,11 @@ class DataType(object):
     def mkarray(cls, subtype):
         """ Factory method returning array types. """
         return cls(LP.ARRAY, subtype)
+
+    @classmethod
+    def mkclass(cls, classname):
+        """ Factory method returning class types. """
+        return cls(LP.CLASS, classname)
 
     def __eq__(self, other):
         """ Type matching -- allow comparision with LP.* typeids. """
@@ -57,6 +63,8 @@ class DataType(object):
         s = LP.tokenNames[self.id]
         if self.id == LP.ARRAY:
             s += '(%s)' % LP.tokenNames[self.subtype]
+        elif self.id == LP.CLASS:
+            s += ' %s' % self.subtype
         return s
 
 

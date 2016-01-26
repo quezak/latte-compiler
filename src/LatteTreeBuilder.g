@@ -58,20 +58,24 @@ def main(argv):
 
 // program -------------------------------------------------
 prog returns [lt=ProgTree()]
-    : ^(PROG (fundef { $lt.add_fun_tree($fundef.lt); } )* )
+    : ^(PROG 
+            ( fundef { $lt.add_fun_tree($fundef.lt); } 
+            | classdef { $lt.add_class_tree($classdef.lt); }
+            )*
+       )
     ;
 
 fundef returns [lt=FunTree()]
     : ^(FUNDEF
             type { $lt.set_ret_type($type.dt); }
-            IDENT { $lt.set_name($IDENT.text); }
+            IDENT { $lt.set_name(str($IDENT.text)); }
             (arg { $lt.add_arg($arg.fa); })*
             block { $lt.set_block($block.lt); }
        )
     ;
 
 arg returns [fa]
-    : ^(ARG type IDENT) { $fa = FunArg($type.dt, $IDENT.text); }
+    : ^(ARG type IDENT) { $fa = FunArg($type.dt, str($IDENT.text)); }
     ;
 
 type returns [dt]
@@ -83,13 +87,20 @@ block returns [lt=BlockTree()]
     : ^(BLOCK (stmt { $lt.add_stmt($stmt.lt); })* )
     ;
 
+classdef returns [lt]
+    : ^(CLASS
+            IDENT { $lt = ClassTree(str($IDENT.text)); }
+            (decl { $lt.add_member_decl($decl.lt); })*
+       )
+    ;
+        
+
 // statements ----------------------------------------------
-stmt returns [lt=StmtTree()]
+stmt returns [lt]
     : block
         { $lt = $block.lt; }
-    | ^(DECL type { $lt = DeclTree($type.dt); }
-            (ditem { $lt.add_item($ditem.item); })+
-       )
+    | decl
+        { $lt = $decl.lt; }
     | ^(ASSIGN { $lt = StmtTree(ASSIGN); } 
             var { $lt.add_child($var.lt); }
             expr { $lt.add_child($expr.lt); }
@@ -119,11 +130,17 @@ stmt returns [lt=StmtTree()]
         { $lt = $expr.lt; }
     ;
 
+decl returns [lt]
+    : ^(DECL type { $lt = DeclTree($type.dt); }
+            (ditem { $lt.add_item($ditem.item); })+
+       )
+    ;
+
 ditem returns [item]
     : ^(DITEM IDENT { id_pos = Status.get_cur_pos() } )
-        { $item = DeclArg($IDENT.text, id_pos); }
+        { $item = DeclArg(str($IDENT.text), id_pos); }
     | ^(ASSIGN IDENT { id_pos = Status.get_cur_pos() } expr)
-        { $item = DeclArg($IDENT.text, id_pos, $expr.lt); }
+        { $item = DeclArg(str($IDENT.text), id_pos, $expr.lt); }
     ;
 
 ifelse returns [lt=StmtTree()]
@@ -134,7 +151,7 @@ ifelse returns [lt=StmtTree()]
 // expressions ---------------------------------------------
 var returns [lt]
     : ^(ATTR attr=IDENT
-        { $lt = VarTree(ATTR, $attr.text); }
+        { $lt = VarTree(ATTR, str($attr.text)); }
             obj=expr { $lt.add_child($obj.lt); }
        )
     | ^(ELEM num=expr
@@ -142,21 +159,21 @@ var returns [lt]
             obj=expr { $lt.add_child_front($obj.lt); }
        )
     | IDENT
-        { $lt = VarTree(IDENT, $IDENT.text); }
+        { $lt = VarTree(IDENT, str($IDENT.text)); }
     ;
 
 expr returns [lt]
     : var
         { $lt = $var.lt; }
     | lit=(NUMBER|STRINGLIT|TRUE|FALSE)
-        { $lt = LiteralTree($lit.type, $lit.text); }
+        { $lt = LiteralTree($lit.type, str($lit.text)); }
     | ^(op=(NOT|NEG) e=expr)
         { $lt = UnopTree($op.type, $e.lt); }
     | ^(op=(MULT|DIV|MOD|PLUS|MINUS | LT|LEQ|GT|GEQ|EQ|NEQ | AND|OR) { op_pos = Status.get_cur_pos() }
            a=expr b=expr
        )
         { $lt = BinopTree($op.type, $a.lt, $b.lt, pos=op_pos); }
-    | ^(FUNCALL IDENT { $lt = FuncallTree($IDENT.text); }
+    | ^(FUNCALL IDENT { $lt = FuncallTree(str($IDENT.text)); }
             (e=expr { $lt.add_child($e.lt); } )*
        )
     | ^(NEW type size=expr)

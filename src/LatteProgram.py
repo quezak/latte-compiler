@@ -76,11 +76,12 @@ class LatteCode(object):
 class ProgCode(LatteCode):
     def __init__(self, tree, **kwargs):
         super(ProgCode, self).__init__(tree, **kwargs)
-        for funtree in tree.children:
-            if tree.symbol(funtree.name).call_counter > 0 or funtree.name == LP.Builtins.MAIN:
-                self.add_fun_code(funtree)
-            else:
-                debug('skipping uncalled function `%s`' % funtree.name)
+        for child in tree.children:
+            if child.symbol(child.name).is_function():
+                if child.symbol(child.name).call_counter > 0 or child.name == LP.Builtins.MAIN:
+                    self.add_fun_code(child)
+                else:
+                    debug('skipping uncalled function `%s`' % child.name)
 
     def add_fun_code(self, funtree):
         self.add_child(FunCode(funtree))

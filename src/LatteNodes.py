@@ -165,6 +165,13 @@ class ProgTree(LatteTree):
         self.add_child(fun_tree)
         self.add_symbol(fun_tree.get_fun_symbol())
 
+    def add_class_tree(self, class_tree):
+        """ Adds a class node to the program tree. """
+        debug('add_class_tree name=%s declcount=%d pos=%s' %
+              (class_tree.name, len(class_tree.children), class_tree.pos))
+        self.add_child(class_tree)
+        self.add_symbol(class_tree.type)
+
     def print_tree(self):
         if not self.level:
             self._set_level(0)
@@ -180,7 +187,7 @@ class ProgTree(LatteTree):
             if main_sym != main_exp:
                 Status.add_error(TypecheckError('`%s` has wrong type: `%s`' %
                                                 (Builtins.MAIN, str(main_sym)), main_sym.pos))
-                Status.add_note(TypecheckError('expected `%s` typeeype: `%s`' %
+                Status.add_note(TypecheckError('expected `%s` type: `%s`' %
                                                (Builtins.MAIN, str(main_exp)), main_sym.pos))
         else:
             Status.add_error(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
@@ -254,6 +261,23 @@ class FunTree(LatteTree):
             ret_stmt = self.children[0].check_return()
             if not ret_stmt:
                 self.no_return_error(self.children[0].pos)
+
+
+# class #########################################################################################
+class ClassTree(LatteTree):
+    """ Node representing a single class definition. """
+    def __init__(self, name, **kwargs):
+        super(ClassTree, self).__init__(**kwargs)
+        self.name = name
+        self.type = Symbol(self.name, DataType.mkclass(self.name), self.pos)
+    
+    def add_member_decl(self, tree):
+        self.add_child(tree)
+
+    def print_tree(self):
+        self._print_indented('>CLASS %s' % self.name)
+        self._print_children()
+        self._print_indented('<CLASS %s' % self.name)
 
 
 # statement #####################################################################################

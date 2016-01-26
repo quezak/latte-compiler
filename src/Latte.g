@@ -101,7 +101,8 @@ def main(argv):
 // Latte grammar, converted to LL* format.
 
 // programs ------------------------------------------------
-prog        : (fundef)* EOF -> ^(PROG fundef*);
+prog        : globdef* EOF -> ^(PROG globdef*);
+globdef     : fundef | classdef;
 fundef      : type IDENT arglist block -> ^(FUNDEF type IDENT arglist? block);
 arglist     : LPAREN! (arg (LISTSEP! arg)* )? RPAREN!;
 arg         : type IDENT -> ^(ARG type IDENT);
@@ -109,18 +110,21 @@ type        : plainType^
             | plainType LSQUARE RSQUARE -> ^(ARRAY plainType)
             ;
 plainType   : INT | STRING | BOOLEAN | VOID;
+classdef    : CLASS^ IDENT LBRACE! (decl)* RBRACE!;
 
 // statements ----------------------------------------------
 block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
 stmt        : STMTSEP!
             | block
-            | type ditemlist STMTSEP -> ^(DECL type ditemlist)
+            | decl
             | (expr)=> varStmt STMTSEP!
             | RETURN^ expr? STMTSEP!
             | IF^ condition stmt ((ELSE)=>ifelse)?
             | WHILE^ condition stmt
             | FOR^ LPAREN! type ditem COLON! expr RPAREN! stmt
             ;
+
+decl        : type ditemlist STMTSEP -> ^(DECL type ditemlist);
 
 varStmt     : expr ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^)?;
 
@@ -205,6 +209,7 @@ VOID        : 'void';
 TRUE        : 'true';
 FALSE       : 'false';
 NEW         : 'new';
+CLASS       : 'class';
 NUMBER      : ('0'..'9')+;
 IDENT       : IDFCHAR (IDCHAR)*;
 fragment IDFCHAR : ('a'..'z' | 'A'..'Z' | '_');
