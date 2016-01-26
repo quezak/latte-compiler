@@ -291,7 +291,7 @@ class LatteOptimizer(object):
         if 'apply_pocket' in self.codes[pos]:
             self.codes[pos]['apply_pocket'].update(a_pocket)
         else:
-            self.codes[pos]['apply_pocket'] = a_pocket
+            self.codes[pos]['apply_pocket'] = a_pocket.copy()
         self.apply_needed = True
 
     def _insert_apply_pockets(self):

@@ -64,7 +64,7 @@ class CodeMatcher(object):
 
     def code_iter(self, start_pos=0, end_pos=None):
         """ Generator that yields all the codes in range that are not marked DELETED. """
-        for pos in xrange(start_pos, end_pos or self.len_codes()):
+        for pos in self.posrange(start_pos, end_pos):
             if not self.match(self.code(pos), type=self.BLANK):
                 yield pos
 
@@ -75,9 +75,8 @@ class CodeMatcher(object):
         Note: this is naive matching -- it's probably not worth writing KMP-like tricks here.
         After a match the matched codes are skipped, so no returned occurences overlap.
         Yielded value is a list of code indexes matched for the list. """
-        end = min(end_pos or (self.len_codes() - len(spec_list)), self.len_codes() - len(spec_list))
         skip_to = 0
-        for pos in xrange(start_pos, end):
+        for pos in self.posrange(start_pos, end_pos):
             # if we returned a match, skip the matched region
             if pos < skip_to:
                 continue
@@ -103,6 +102,12 @@ class CodeMatcher(object):
             yield c
 
     def gen_next(self, pos, max_pos=None, attrlist=[], **kwargs):
-        for c in self._gen_by_iterable(xrange(pos+1, max_pos or self.len_codes()),
-                                       attrlist, **kwargs):
+        for c in self._gen_by_iterable(self.posrange(pos+1, max_pos), attrlist, **kwargs):
             yield c
+
+    def posrange(self, start, limit=None):
+        """ Custom range iterator that iterates to the end of codes array even if it changes. """
+        val = start
+        while val < self.len_codes() and (limit is None or val < limit):
+            yield val
+            val += 1
