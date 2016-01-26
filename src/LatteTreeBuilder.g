@@ -133,10 +133,14 @@ ifelse returns [lt=StmtTree()]
 
 // expressions ---------------------------------------------
 var returns [lt]
-    : ^(ATTR obj=IDENT attr=IDENT)
-        { $lt = VarTree(ATTR, $attr.text, obj=$obj.text); }
-    | ^(ELEM obj=IDENT expr)
-        { $lt = VarTree(ELEM, None, obj=$obj.text, children=[$expr.lt]); }
+    : ^(ATTR attr=IDENT
+        { $lt = VarTree(ATTR, $attr.text); }
+            obj=expr { $lt.add_child($obj.lt); }
+       )
+    | ^(ELEM num=expr
+        { $lt = VarTree(ELEM, None, children=[$num.lt]); }
+            obj=expr { $lt.add_child_front($obj.lt); }
+       )
     | IDENT
         { $lt = VarTree(IDENT, $IDENT.text); }
     ;

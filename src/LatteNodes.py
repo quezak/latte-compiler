@@ -44,6 +44,10 @@ class LatteTree(object):
         self.children.append(tree)
         tree.set_parent(self)
 
+    def add_child_front(self, tree):
+        self.children.insert(0, tree);
+        tree.set_parent(self)
+
     def set_parent(self, tree):
         self.parent = tree
 
@@ -74,16 +78,12 @@ class LatteTree(object):
 
     def has_symbol(self, name):
         """ Check if there is a symbol with a given name declared. """
-        if hasattr(self, 'scope_override'):
-            return self.scope_override().has_symbol(name)
         if name in self.symbols:
             return True
         return (self.parent) and (self.parent.has_symbol(name))
 
     def symbol(self, name):
         """ Return the symbol with given name or None, if there is none. """
-        if hasattr(self, 'scope_override'):
-            return self.scope_override().symbol(name)
         if name in self.symbols:
             return self.symbols[name]
         if self.parent:
@@ -428,39 +428,39 @@ class ForTree(BlockTree):
         super(ForTree, self).add_stmt(tree)
 
     def check_types(self):
-        # Array expr added: fix symbol lookup for case 'int[] i; for (int i : i) ...'
-        self.array_expr.scope_override = lambda: self.parent
+        # Children after the morph: [array decl, loop_var decl, counter decl, while]
         # Expect that the child expr has type array(type of the decl child)
-        dtype = self.children[0].decl_type.type.id
-        self.check_children_types()
+        dtype = self.children[1].decl_type.type.id
         self.array_expr.expect_type(Symbol('', DataType.mkarray(dtype)))
         self.array_expr.check_types()
+        self.check_children_types()
 
     def morph_into_block(self):
         """ Convert the current node into a BlockTree with an equivalent while loop inside. """
         old_children = list(self.children)
         self.children = []
         self.array_expr = old_children[1]
+        loop_var = old_children[0].items[0].name
+        # [0] Evaluate the array expresion once.
+        array_decl = DeclTree(DataType.mkarray(old_children[0].decl_type.type.id))
+        array_decl.add_item(DeclArg(Builtins.FOR_ARRAY, self.pos, self.array_expr))
+        self.add_stmt(array_decl)
         # [1] Add declarations for the loop counter and loop value.
         self.add_stmt(old_children[0])
         counter_decl = DeclTree(LP.INT)
         counter_decl.add_item(DeclArg(Builtins.FOR_COUNTER, self.pos))  # = 0 by default
         self.add_stmt(counter_decl)
-        # TODO fix for expression returning array
-        array = old_children[1].value
-        loop_var = old_children[0].items[0].name
         # [2a] condition: counter < array.length
         while_cond = BinopTree(LP.LT, VarTree(LP.IDENT, Builtins.FOR_COUNTER),
-                              VarTree(LP.ATTR, Builtins.LENGTH, obj=array))
-        while_cond.children[1].scope_override = lambda: self.parent
+                              VarTree(LP.ATTR, Builtins.LENGTH, children=[
+                                  VarTree(LP.IDENT, Builtins.FOR_ARRAY)]))
         # [2b] assign loop_var = array[counter]
         while_body = BlockTree()
         while_body.add_stmt(StmtTree(LP.ASSIGN, children=[
             VarTree(LP.IDENT, loop_var),
-            VarTree(LP.ELEM, None, obj=array, children=[VarTree(LP.IDENT, Builtins.FOR_COUNTER)])
+            VarTree(LP.ELEM, None, children=[VarTree(LP.IDENT, Builtins.FOR_ARRAY),
+                                             VarTree(LP.IDENT, Builtins.FOR_COUNTER)])
         ]))
-        while_body.children[0].children[1].scope_override = lambda: self.parent
-        while_body.children[0].children[1].children[0].scope_override = lambda: self
         # [2c] insert for loop body
         if len(old_children) > 2:
             while_body.add_stmt(old_children[2])
@@ -468,7 +468,7 @@ class ForTree(BlockTree):
         while_body.add_stmt(StmtTree(LP.INCR, children=[VarTree(LP.IDENT, Builtins.FOR_COUNTER)]))
         # [3] Add the loop to the block.
         self.add_stmt(StmtTree(LP.WHILE, children=[while_cond, while_body]))
-        self.type = Symbol('', LP.BLOCK, Status.get_cur_pos())
+        self.type = Symbol('', LP.BLOCK, self.pos)
 
 
 # declaration ###################################################################################
@@ -547,6 +547,27 @@ class ExprTree(StmtTree):
         if self.expected_type:
             self.expected_type.check_with(self.value_type, self.pos)
 
+    def settable(self):
+        """ Check whether the variable can be assigned (e.g. tab.length can't). """
+        for case in switch(self.type.type):
+            if case(LP.ATTR):
+                return not (self.value_type.type == LP.ARRAY and self.value == Builtins.LENGTH)
+            if case(LP.IDENT, LP.ELEM):
+                return True
+        return False
+
+    def check_settable(self):
+        """ Check assignability and post an error if needed. """
+        if not self.settable():
+            Status.add_error(TypecheckError('expression cannot be assigned to', self.pos))
+
+    def attributable(self):
+        """ Check whether the variable can have attributes. """
+        for case in switch(self.type.type):
+            if case(LP.ATTR):
+                return self.obj_type.type == LP.ARRAY
+        return False
+
 
 # literal #######################################################################################
 class LiteralTree(ExprTree):
@@ -606,8 +627,9 @@ class LiteralTree(ExprTree):
 class VarTree(LiteralTree):
     def __init__(self, typeid, value, **kwargs):
         super(VarTree, self).__init__(typeid, value, **kwargs)
-        if self.type.type in [LP.ATTR, LP.ELEM]:
-            self.obj = kwargs['obj']
+        # VAR: IDENT in value
+        # ELEM: children=[obj, num]
+        # ATTR: name in value, children=[obj]
 
     def print_tree(self):
         for case in switch(self.type.type):
@@ -615,12 +637,14 @@ class VarTree(LiteralTree):
                 self._print_indented('= IDENT %s' % self.value)
                 break
             if case(LP.ATTR):
-                self._print_indented('= ATTR %s.%s' % (self.obj, self.value))
+                self._print_indented('. ATTR %s' % (self.value))
+                self._print_children()
+                self._print_indented('; ATTR %s' % (self.value))
                 break
             if case(LP.ELEM):
-                self._print_indented('[ ELEM %s' % self.obj)
+                self._print_indented('[ ELEM')
                 self._print_children()
-                self._print_indented('] ELEM %s' % self.obj)
+                self._print_indented('] ELEM')
                 break
 
     def _check_symbol(self, name):
@@ -643,51 +667,37 @@ class VarTree(LiteralTree):
                 self.set_value_type(self._check_symbol(self.value))
                 break
             if case(LP.ATTR):
-                sym = self._check_symbol(self.obj)
-                if sym.type == LP.ARRAY:
+                self.children[0].check_types()
+                self.obj_type = self.children[0].value_type
+                if not self.attributable():
+                    Status.add_error(TypecheckError(
+                        'request for member `%s` in non-class expression of type `%s`' % (
+                            self.value, str(self.obj_type)), self.pos))
+                    break
+                if self.obj_type.type == LP.ARRAY:
                     if self.value == Builtins.LENGTH:
                         self.set_value_type(Symbol('', LP.INT, self.pos))
                     else:
                         Status.add_error(TypecheckError(
-                            'invalid attribute `%s` for type `%s`' % (self.value, str(sym.type)),
-                            self.pos))
-                elif sym.type != LP.TYPE_ERROR:
-                    raise InternalError('ATTR for non-array type ' + str(sym.type))
+                            'invalid attribute `%s` for type `%s`' % (
+                                self.value, str(self.obj_type)), self.pos))
+                elif self.obj_type.type != LP.TYPE_ERROR:
+                    raise InternalError('ATTR for non-array type ' + str(self.obj_type))
                 break
             if case(LP.ELEM):
-                sym = self._check_symbol(self.obj)
-                if sym.type == LP.ARRAY:
-                    self.children[0].expect_type(Symbol('', LP.INT))
-                    self.set_value_type(Symbol('', sym.type.subtype, self.pos))
-                elif sym.type != LP.TYPE_ERROR:
+                self.children[0].check_types()
+                self.obj_type = self.children[0].value_type
+                if self.obj_type.type == LP.ARRAY:
+                    self.children[1].expect_type(Symbol('', LP.INT))
+                    self.set_value_type(Symbol('', self.obj_type.type.subtype, self.pos))
+                    self.children[1].check_types()
+                elif self.obj_type.type != LP.TYPE_ERROR:
                     Status.add_error(TypecheckError(
-                        '`operator[]` for non-array type `%s`' % str(sym.type), self.pos))
+                        '`operator[]` for non-array type `%s`' % str(self.obj_type), self.pos))
                 break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
         return self.value_type
-
-    def settable(self):
-        """ Check whether the variable can be assigned (e.g. tab.length can't). """
-        for case in switch(self.type.type):
-            if case(LP.ATTR):
-                sym = self._check_symbol(self.obj)
-                return not (sym.type == LP.ARRAY and self.value == Builtins.LENGTH)
-        return True
-
-    def __str__(self):
-        for case in switch(self.type.type):
-            if case(LP.IDENT):
-                return 'variable `%s`' % self.value
-            if case(LP.ATTR):
-                return 'field `%s.%s`' % (self.obj, self.value)
-            if case(LP.ELEM):
-                return 'element of array `%s`' % self.obj
-
-    def check_settable(self):
-        """ Check assignability and post an error if needed. """
-        if not self.settable():
-            Status.add_error(TypecheckError(str(self) + ' cannot be set', self.pos))
 
 
 # unary operator ################################################################################

@@ -290,7 +290,6 @@ class ExprCode(StmtCode):
         self.value_type = tree.value_type
 
     def is_constant(self):
-        # TODO use this in optimization
         return False
 
     def check_unused_result(self):
@@ -359,8 +358,6 @@ class VarCode(LiteralCode):
     def __init__(self, tree, **kwargs):
         super(VarCode, self).__init__(tree, **kwargs)
         self.value = tree.value
-        if self.type.type in [LP.ATTR, LP.ELEM]:
-            self.obj = tree.obj
         for child in tree.children:
             self.add_child(ExprFactory(child))
 
@@ -371,11 +368,11 @@ class VarCode(LiteralCode):
                 self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
                                dest=Loc.reg('a'))
                 break
-            if case(LP.ELEM) and self.tree.symbol(self.obj).type.subtype == LP.BOOLEAN:
+            if case(LP.ELEM) and self.tree.value_type.type == LP.BOOLEAN:
                 self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
                 break
             if case():
-                raise InternalError('jump-expr codes for non-bool %s literal at %s!' % (
+                raise InternalError('jump-expr codes for non-bool %s expression at %s!' % (
                     str(self.type), self.tree.pos))
         # [1]: Compare and jump (note: comparing with 0, so on equality jump to false!)
         self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),
@@ -392,31 +389,32 @@ class VarCode(LiteralCode):
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.ATTR):
-                sym = self.tree.symbol(self.obj)
-                if sym.type == LP.ARRAY and self.value == Builtins.LENGTH:
+                if self.tree.obj_type.type == LP.ARRAY and self.value == Builtins.LENGTH:
                     # Array length is stored in first element of its memory block.
-                    self.add_instr(CC.MOV, src=Loc.sym(sym), dest=Loc.reg('d'))
+                    self.add_child_by_idx(0)
+                    self.add_instr(CC.POP, dest=Loc.reg('d'))
                     if addr_only:
                         return
                     self.add_instr(CC.MOV, src=Loc.mem(Loc.reg_d), dest=Loc.reg('d'))
                     self.add_instr(CC.PUSH, src=Loc.reg('d'))
                 else:
-                    raise InternalError('invalid attr %s for type %s' % (self.value, str(obj.type)))
+                    raise InternalError('invalid attr %s for type %s' % (self.value,
+                                                                         str(self.obj_type)))
                 break
             if case(LP.ELEM):
-                self._gen_code_load_array_elem(dest_reg=Loc.reg('a'), addr_only=addr_only)
+                self._gen_code_load_array_elem(dest_reg=Loc.reg('d'), addr_only=addr_only)
                 if addr_only:
                     return
-                self.add_instr(CC.PUSH, src=Loc.reg('a'))
+                self.add_instr(CC.PUSH, src=Loc.reg('d'))
                 break
             if case():
                 raise InternalError('invalid variable type %s' % str(self.type.type))
 
     def _gen_code_load_array_elem(self, dest_reg, addr_only=False):
-        self.add_child_by_idx(0)  # evaluate the array index
+        self.add_child_by_idx(0)  # evaluate the array address
+        self.add_child_by_idx(1)  # evaluate the array index
         self.add_instr(CC.POP, dest=Loc.reg('a'))
-        self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.obj)),
-                       dest=Loc.reg('d'))  # array base address
+        self.add_instr(CC.POP, dest=Loc.reg('d'))
         # Calculate the elem address -- with offset +1 because of array size stored at 0.
         self.add_instr(CC.LEA, src=Loc.mem(Loc.reg_d, offset=CC.var_size,
                                            idx=Loc.reg_a, mult=CC.var_size),

@@ -228,7 +228,7 @@ class LatteOptimizer(object):
             p_push, p_op, p_pop = indexes
             src, dest = self.codes[p_push]['src'], self.codes[p_pop]['dest']
             # do the reduction only if op's arguments do nothing to src and dest locations
-            if ((src.is_constant or src not in self.codes[p_op].values()) and
+            if ((src.is_constant() or src not in self.codes[p_op].values()) and
                     dest not in self.codes[p_op].values()):
                 result += self._do_push_pop_reduction([p_push, p_pop])
         return result

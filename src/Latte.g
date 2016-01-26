@@ -45,6 +45,7 @@ class Builtins:
     MAIN = 'main'
     LENGTH = 'length'
     FOR_COUNTER = '__for_counter__'
+    FOR_ARRAY = '__for_array__'
 }
 
 // Header pasted on the top of lexer file.
@@ -68,6 +69,7 @@ def print_dot_tree(self):
 def displayRecognitionError(self, tokenNames, e):
     """ Saves the error into the error set. """
     msg = self.getErrorMessage(e, tokenNames)
+    import ipdb; ipdb.set_trace()
     Status.add_error(ParserError(msg, e.line, e.charPositionInLine))
 }
 
@@ -111,15 +113,14 @@ block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
 stmt        : STMTSEP!
             | block
             | type ditemlist STMTSEP -> ^(DECL type ditemlist)
-            | (var)=> varStmt STMTSEP!
+            | (expr)=> varStmt STMTSEP!
             | RETURN^ expr? STMTSEP!
             | IF^ condition stmt ((ELSE)=>ifelse)?
             | WHILE^ condition stmt
             | FOR^ LPAREN! type ditem COLON! expr RPAREN! stmt
-            | expr STMTSEP!
             ;
 
-varStmt     : var ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^);
+varStmt     : expr ((ASSIGN)=> ASSIGN^ expr | INCR^ | DECR^)?;
 
 ditemlist   : ditem (LISTSEP! ditem)*;
 ditem       : IDENT -> ^(DITEM IDENT)
@@ -132,22 +133,22 @@ ifelse      : ELSE^ stmt;
 // expressions ---------------------------------------------
 boolean     : TRUE | FALSE;
 
-var         : obj=IDENT DOT attr=IDENT -> ^(ATTR $obj $attr)
-            | obj=IDENT LSQUARE expr RSQUARE -> ^(ELEM $obj expr)
-            | { self.input.LA(2) != LPAREN }?=>IDENT^
+varSuffix   : DOT attr=IDENT -> ^(ATTR $attr)
+            | LSQUARE expr RSQUARE -> ^(ELEM expr)
             ;
-
-eAtom       : { self.input.LA(2) == LPAREN }?=> IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
-            | { self.input.LA(2) != LPAREN }?=> var^
+eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
+            | LPAREN! expr^ RPAREN!
+            | IDENT^
+            | NEW^ type LSQUARE! NUMBER RSQUARE!
+            ;
+ePrimary    : eVar^ (varSuffix^)?
             | NUMBER^
             | STRINGLIT^
             | boolean^
-            | LPAREN! expr^ RPAREN!
-            | NEW^ type LSQUARE! NUMBER RSQUARE!
             ;
 eUnary      : NOT^ eUnary
             | MINUS eUnary -> ^(NEG eUnary)
-            | eAtom
+            | ePrimary
             ;
 eMul        : eUnary ((MULT^ | DIV^ | MOD^) eUnary)*;
 eAdd        : eMul ((PLUS^ | MINUS^) eMul)*;
