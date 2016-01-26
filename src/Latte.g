@@ -154,6 +154,7 @@ ePrimary    : eVar^ (varSuffix^)?
             | NEW^ plainType (LSQUARE! expr RSQUARE!)?
             | NUMBER^
             | STRINGLIT^
+            | LPAREN! declType RPAREN! NULL^
             | boolean^
             ;
 eUnary      : NOT^ eUnary
@@ -214,6 +215,7 @@ TRUE        : 'true';
 FALSE       : 'false';
 NEW         : 'new';
 CLASS       : 'class';
+NULL        : 'null';
 NUMBER      : ('0'..'9')+;
 IDENT       : IDFCHAR (IDCHAR)*;
 fragment IDFCHAR : ('a'..'z' | 'A'..'Z' | '_');

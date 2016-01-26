@@ -434,8 +434,7 @@ class StmtTree(LatteTree):
                 ch.unused_result = True
 
     def is_null(self):
-        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
-        objects -- since there is no explicit NULL in Latte). """
+        """ Return true if the statement is a NULL value. """
         return False
 
 
@@ -558,8 +557,7 @@ class DeclTree(StmtTree):
                 if case(LP.VOID):
                     return  # just to avoid errors
                 if case(LP.ARRAY, LP.OBJECT):
-                    # implicit NULL for declared but unassigned objects
-                    item.expr = LiteralTree(self.decl_type.type, None)
+                    item.expr = LiteralTree(self.decl_type.type, LP.NULL)
                     break
                 if case():
                     raise InternalError('no default value for type %s' % str(self.decl_type))
@@ -653,8 +651,7 @@ class LiteralTree(ExprTree):
             return typeid
 
     def __init__(self, typeid, value, **kwargs):
-        """ Literal constructor. typeid can be a DataType (e.g. an array or object type) and value
-        a reference (in particular, value=None means a (non-explicit) NULL). """
+        """ Literal constructor. typeid can be a DataType (e.g. an array or object type). """
         real_typeid = self._get_value_typeid(typeid)
         super(LiteralTree, self).__init__(real_typeid, **kwargs)
         self.value = value
@@ -683,9 +680,8 @@ class LiteralTree(ExprTree):
         self.get_type()
 
     def is_null(self):
-        """ Return true if the statement is a NULL value (happens only for declared, but unassigned
-        objects -- since there is no explicit NULL in Latte). """
-        return self.type not in DataType.PLAIN_TYPES and self.value is None
+        """ Return true if the statement is a NULL value. """
+        return self.type not in DataType.PLAIN_TYPES and self.value == LP.NULL
 
 
 # variables, fields #############################################################################
@@ -804,6 +800,7 @@ class BinopTree(ExprTree):
     _int_ops = [LP.MULT, LP.DIV, LP.MOD, LP.PLUS, LP.MINUS,
                 LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
     _boolean_ops = [LP.AND, LP.OR, LP.EQ, LP.NEQ]
+    _object_ops = [LP.EQ, LP.NEQ]  # identity (object pointer comparision)
     _string_ops = [LP.PLUS]
     _rel_ops = [LP.LT, LP.LEQ, LP.GT, LP.GEQ, LP.EQ, LP.NEQ]
 
@@ -815,6 +812,7 @@ class BinopTree(ExprTree):
                 LP.INT: cls._int_ops,
                 LP.BOOLEAN: cls._boolean_ops,
                 LP.STRING: cls._string_ops,
+                LP.OBJECT: cls._object_ops,
             }[type.type.id]
         except KeyError:
             return []

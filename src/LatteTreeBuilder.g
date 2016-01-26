@@ -171,6 +171,8 @@ expr returns [lt]
         { $lt = $var.lt; }
     | lit=(NUMBER|STRINGLIT|TRUE|FALSE)
         { $lt = LiteralTree($lit.type, str($lit.text)); }
+    | ^(NULL declType)
+        { $lt = LiteralTree($declType.dt, NULL); }
     | ^(op=(NOT|NEG) e=expr)
         { $lt = UnopTree($op.type, $e.lt); }
     | ^(op=(MULT|DIV|MOD|PLUS|MINUS | LT|LEQ|GT|GEQ|EQ|NEQ | AND|OR) { op_pos = Status.get_cur_pos() }

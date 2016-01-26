@@ -273,7 +273,7 @@ class DeclCode(StmtCode):
         for item in self.items:
             addr = Loc.var_addr(fun.next_var_num())
             sym = Symbol(item.name, self.decl_type.type, addr)
-            if item.expr and not item.expr.is_null():
+            if item.expr:
                 self.add_child_by_idx(item.expr_child_idx)
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.sym(sym))
@@ -347,6 +347,9 @@ class LiteralCode(ExprCode):
             if case(LP.STRING):
                 self.add_instr(CC.PUSH, src=Loc.stringlit(self))
                 break
+            if case(LP.OBJECT):  # The only case of an object literal is NULL.
+                self.add_instr(CC.PUSH, src=Loc.const(0))
+                break
             if case():
                 raise InternalError('invalid literal type %s' % str(self.type.type))
 
@@ -372,7 +375,7 @@ class VarCode(LiteralCode):
             if case(LP.ELEM) and self.tree.value_type.type == LP.BOOLEAN:
                 self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
                 break
-            if case(LP.OBJECT) and self.tree.value_type.type == LP.BOOLEAN:
+            if case(LP.ATTR) and self.tree.value_type.type == LP.BOOLEAN:
                 self._gen_code_load_member(dest_reg=Loc.reg('a'))
             if case():
                 raise InternalError('jump-expr codes for non-bool %s expression at %s!' % (
@@ -727,9 +730,9 @@ def StmtFactory(tree, **kwargs):
 
 def _expr_constructor(tree, **kwargs):
     for case in switch(tree.type.type):
-        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.ARRAY):
+        if case(LP.INT, LP.STRING, LP.BOOLEAN, LP.ARRAY, LP.OBJECT):
             return LiteralCode
-        if case(LP.IDENT, LP.ATTR, LP.ELEM, LP.OBJECT):
+        if case(LP.IDENT, LP.ATTR, LP.ELEM):
             return VarCode
         if case(LP.NOT, LP.NEG):
             return UnopCode
