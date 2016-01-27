@@ -71,6 +71,11 @@ Optymalizator w jednym przebiegu uruchamia kolejno opisane niżej metody. Liczba
   7.  `scan_labels`: to nie dokońca optymalizacja, a procedura pomocnicza dla innych optymalizacji -- buduje graf przepływu przez zindeksowanie pozycji etykiet oraz skoków w kodzie pośrednim.
   8.  `clear_deleted_codes`: ostatnia "optymalizacja" uprzątająca kod pośredni -- usuwa instrukcje oznaczone jako wyoptymalizowane lub puste (dodające komentarzy w kodzie wynikowym dla ułatwienia rozwoju aplikacji). Nie jest efektywne robić to na bieżąco, gdyż usuwanie ze środka listy ma złożoność liniową i wymusza ręczne wznawianie iteracji.
 
+### Rozszerzenia
+
+#### Tablice
+Tablice `N`-elementowe alokowane są na stercie jako blok pamięci o rozmiarze `N+1` zmiennych. W pierwszej komórce pamięci wpisany jest rozmiar tablicy, zwracany w czasie stałym jako atrybut `.length`; zaś w dalszych komórkach kolejne wartości -- zmienne typów prostych lub referencje do typów złożonych. Możliwe jest oczywiście tworzenie tablic obiektów, tablic wielowymiarowych oraz tablic o niestałej długości. Operator `[]` i atrybut `.length` mogą być stosowane również bezpośrednio do wyrażeń zwracających typ tablicowy, w tym wyników obiektów tymczasowych jak wynik funkcji czy operatora `new`. Przy alokacji nowej tablicy jej elementy są ustawione na wartość domyślną danego typu -- `0` dla liczb, `false` dla wartości logicznych, `""` dla napisów oraz `null` dla referencji obiektów i innych tablic.
+
 ### Użyta dokumentacja
  * [dokumentacja i samouczki ANTLR3](https://theantlrguy.atlassian.net/wiki/display/ANTLR3/ANTLR+v3+documentation);
  * [dokumentacja API pythonowego dla ANTLR3](http://www.antlr3.org/api/index.html);
