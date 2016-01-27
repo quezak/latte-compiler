@@ -78,11 +78,13 @@ class ProgCode(LatteCode):
         super(ProgCode, self).__init__(tree, **kwargs)
         for cls in tree.classdefs():
             if cls.new_count > 0:
+                debug('gen code class %s' % cls.name)
                 self.add_class_code(cls)
             else:
                 debug('skipping uninstantiated class `%s`' % cls.name)
         for fun in tree.fundefs():
             if tree.symbol(fun.name).call_counter > 0 or fun.name == LP.Builtins.MAIN:
+                debug('gen code fun %s' % fun.name)
                 self.add_fun_code(fun)
             else:
                 debug('skipping uncalled function `%s`' % fun.name)
@@ -146,6 +148,9 @@ class ClassCode(LatteCode):
     def __init__(self, tree, **kwargs):
         super(ClassCode, self).__init__(tree, **kwargs)
         self.name = tree.name
+        # Note: Decl gen_code for class members should not be run, as the name lookup is going
+        # through ClassTree.get_member_idx, and the initializing expr is used directly by each
+        # NewCode.
         for fun in tree.fundefs():
             if tree.symbol(fun.old_name).call_counter > 0:
                 self.add_fun_code(fun)
@@ -280,6 +285,8 @@ class BlockCode(StmtCode):
 
 # declaration ###################################################################################
 class DeclCode(StmtCode):
+    # Note: Decl gen_code for class members should not be run, as the name lookup is going through
+    # ClassTree.get_member_idx, and the initializing expr is used directly by each NewCode.
     def __init__(self, tree, **kwargs):
         super(DeclCode, self).__init__(tree, no_children=True, **kwargs)
         self.decl_type = tree.decl_type
@@ -478,7 +485,7 @@ class VarCode(LiteralCode):
 
     def _gen_code_load_member(self, dest_reg, addr_only=False):
         cls = self.tree.get_class(self.tree.classname)
-        m_idx = cls.members[self.value]
+        m_idx = cls.get_member_idx(self.value)
         self.add_child_by_idx(0)  # evaluate the object's base address
         self.add_instr(CC.POP, dest=Loc.reg('a'))
         self.add_instr(CC.MOV, src=Loc.const(m_idx), dest=Loc.reg('d'))  # idx must be a register
@@ -760,7 +767,8 @@ class NewCode(ExprCode):
                 # Allocate required space.
                 cls = self.tree.get_class(self.classname)
                 self.add_instr(CC.PUSH, src=Loc.const(0))  # Fill the memory with 0.
-                self.add_instr(CC.PUSH, src=Loc.const(cls.var_count * CC.var_size))
+                # Allocate space for the whole object, along with superclass members.
+                self.add_instr(CC.PUSH, src=Loc.const(cls.total_var_count * CC.var_size))
                 self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
                 self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
                 if cls.has_nonzero_initializers():
@@ -779,7 +787,7 @@ class NewCode(ExprCode):
                             self.add_child_code(expr_code)  # Evaluate the assigned value.
                             self.add_instr(CC.POP, dest=Loc.reg('d'))
                             # Compute member address -- object base pointer is still in %ebx.
-                            m_offset = cls.members[item.name] * CC.var_size
+                            m_offset = cls.get_member_idx(item.name) * CC.var_size
                             self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
                             self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
                             self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
@@ -808,7 +816,7 @@ class NewCode(ExprCode):
     def new_member_val(cls, node, name, dest_reg):
         """ Extract value of an already initialized member while initializing some other member. """
         cls, obj_ptr = cls.instantiating_class
-        m_offset = cls.members[name] * CC.var_size
+        m_offset = cls.get_member_idx(name) * CC.var_size
         node.add_instr(CC.MOV, src=Loc.const(m_offset), dest=dest_reg)
         node.add_instr(CC.ADD, lhs=obj_ptr, rhs=dest_reg)
         node.add_instr(CC.MOV, src=Loc.mem(str(dest_reg)), dest=dest_reg)

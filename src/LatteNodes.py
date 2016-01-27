@@ -232,6 +232,8 @@ class ProgTree(LatteTree):
             if cls.new_count == 0:
                 Status.add_warning(TypecheckError(
                     'class `%s` defined but never instantiated' % cls.name, cls.pos))
+        if Status.errors():
+            return
         for cls in self.classes.values():
             cls.morph_methods()
         # Checking the symbols builds symbol tables, so we need to clear them before continuing.
@@ -268,13 +270,23 @@ class ProgTree(LatteTree):
         return self.classes[name]
 
     def _check_class_types(self):
+        """ Check types in classdefs starting from inheritance tree leaves. """
+        # Remember the sequence, because code generation needs to be run in the same order.
+        checking_order = []
         count = len(self.classes)
-        while count:
+        while count > 0:
             for cls in self.classdefs():
-                if (not cls.base) or cls.base.checked:
-                    debug('typecheck class %s' % cls.name)
+                if (not cls.checked) and ((not cls.base) or cls.base.checked):
+                    debug('count = %d, typecheck class %s' % (count, cls.name))
+                    checking_order.append(cls)
                     cls.check_types()
                     count -= 1
+        # Reorder the classes accordingly.
+        pos = 0
+        for i in xrange(len(self.children)):
+            if self.children[i].is_class():
+                self.children[i] = checking_order[pos]
+                pos += 1
 
     def get_prog(self):
         return self
@@ -363,7 +375,8 @@ class FunTree(LatteTree):
         """ Recursively changes all class member IDENTs to ATTRs of `self` in tree's children. """
         for pos in xrange(len(tree.children)):
             node = tree.children[pos]
-            if node.type.type == LP.IDENT and node.symbol(node.value).classname == self.cls.name:
+            # If the symbol has a classname, it surely is one of the subclasses (typecheck passed).
+            if node.type.type == LP.IDENT and node.symbol(node.value).classname:
                 self_var = VarTree(LP.IDENT, Builtins.SELF)
                 attr = VarTree(LP.ATTR, node.value, children=[self_var], pos=node.pos)
                 attr.set_parent(tree)
@@ -449,6 +462,9 @@ class ClassTree(LatteTree):
         return self.symbols[name]
 
     def check_types(self):
+        # An object in memory first has the the superclass members, then its own members -- so the
+        # superclass methods can be safely called with `self` set to their subclass instance.
+        self.total_var_count = self.var_count + (self.base.total_var_count if self.base else 0)
         for decl in self.decls():
             decl.check_types()
         for fun in self.fundefs():
@@ -496,6 +512,14 @@ class ClassTree(LatteTree):
         self.new_count += 1
         if self.base:
             self.base.count_new()
+
+    def get_member_idx(self, name):
+        """ Calculate member offset from class base pointer. """
+        if name in self.members:
+            # Offset within own members + superclass occupies first `base.total_var_count` slots.
+            return self.members[name] + (self.base.total_var_count if self.base else 0)
+        # Superclass member lies within the first memory slots.
+        return self.base.get_member_idx(name)
 
 
 # statement #####################################################################################

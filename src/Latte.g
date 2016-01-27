@@ -51,6 +51,7 @@ class Builtins:
     FOR_COUNTER = '__for_counter__'
     FOR_ARRAY = '__for_array__'
     SELF = 'self'
+    SUPER = '__super__'
 }
 
 // Header pasted on the top of lexer file.
