@@ -480,7 +480,7 @@ class ClassTree(LatteTree):
                         (item.expr.type.type == LP.OBJECT and int(item.expr.value) != LP.NULL) or
                         (item.expr.type.type == LP.STRING)):
                     return True
-        return False
+        return self.base and self.base.has_nonzero_initializers()
 
     def decls(self):
         """ Generator for iterating through member declarations. """

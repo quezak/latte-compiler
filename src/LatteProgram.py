@@ -778,19 +778,7 @@ class NewCode(ExprCode):
                     # Assign the non-0 default values and specified initializations.
                     old_instantiating_class = NewCode.instantiating_class
                     NewCode.instantiating_class = (cls, Loc.reg('b'))
-                    for decl in cls.decls():
-                        dtype = decl.decl_type.type
-                        for item in decl.items:
-                            expr_code = ExprFactory(item.expr)
-                            if expr_code.is_constant() and expr_code.value == 0:
-                                continue  # Skip assignments with 0, as the memory is zero-filled.
-                            self.add_child_code(expr_code)  # Evaluate the assigned value.
-                            self.add_instr(CC.POP, dest=Loc.reg('d'))
-                            # Compute member address -- object base pointer is still in %ebx.
-                            m_offset = cls.get_member_idx(item.name) * CC.var_size
-                            self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
-                            self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
-                            self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
+                    self._add_nonzero_inits(cls)
                     NewCode.instantiating_class = old_instantiating_class
                     # Restore %ebx and push the object memory pointer as expression result.
                     self.add_instr(CC.MOV, src=Loc.reg('b'), dest=Loc.reg('a'))
@@ -800,6 +788,27 @@ class NewCode(ExprCode):
             if case():
                 raise InternalError('invalid type for new operator: ' + str(self.value_type))
         self.check_unused_result()
+
+    def _add_nonzero_inits(self, cls):
+        """ Init all class fields which have nonzero values. Start with subclass members, as they
+        are first in the memory block. """
+        if cls.base:
+            # Init the superclass part. `instantiating_class` can remain the same, as the base
+            # pointer is the same and the offsets are calculated properly in get_member_idx().
+            self._add_nonzero_inits(cls.base)
+        for decl in cls.decls():
+            dtype = decl.decl_type.type
+            for item in decl.items:
+                expr_code = ExprFactory(item.expr)
+                if expr_code.is_constant() and expr_code.value == 0:
+                    continue  # Skip assignments with 0, as the memory is zero-filled.
+                self.add_child_code(expr_code)  # Evaluate the assigned value.
+                self.add_instr(CC.POP, dest=Loc.reg('d'))
+                # Compute member address -- object base pointer is still in %ebx.
+                m_offset = cls.get_member_idx(item.name) * CC.var_size
+                self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
+                self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
+                self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
 
     @staticmethod
     def default_asm_value(type):
