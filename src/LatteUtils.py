@@ -70,13 +70,18 @@ class DataType(object):
 
 
 class Symbol(object):
+
+    prog = None  # to be set from ProgNode
+
     """ Class representing a symbol (name, type and possibly location of declaration). """
-    def __init__(self, name, type, pos=None, classname=None):
+    def __init__(self, name, type, pos=None, cls=None):
         super(Symbol, self).__init__()
         self.name = name
         self.pos = pos
-        self.classname = classname
         self.type = DataType(type)
+        self.cls = cls
+        if self.type == LP.OBJECT and (not cls):
+            self.cls = Symbol.prog.get_class(self.type.subtype)
 
     def __eq__(self, other):
         """ Type matching. """
@@ -94,7 +99,7 @@ class Symbol(object):
         return str(self.type)
 
     def full_name(self):
-        return (self.classname + '::' if self.classname else '') + self.name
+        return (self.cls.name + '::' if self.cls else '') + self.name
 
     def is_function(self):
         return False
@@ -102,23 +107,38 @@ class Symbol(object):
     def is_object(self):
         return self.type == LP.OBJECT
 
+    def _check_with(self, other):
+        if self.type == LP.OBJECT and other.type == LP.OBJECT:
+            debug('OBJ CMP: %s | %s' % (str(self.type), str(other.type)))
+        if self == other:
+            if self.type == LP.OBJECT and other.type == LP.OBJECT:
+                debug('      -> TRUE')
+            return True
+        if self.type == LP.OBJECT and other.type == LP.OBJECT and other.cls.base:
+            return self._check_with(Symbol(other.name,
+                                           DataType(LP.OBJECT, subtype=other.cls.base.name),
+                                           other.pos, other.cls.base))
+                                           
+        return False
+
     def check_with(self, other, pos):
         """ Check if two symbols have matching type. """
         if not other:
             debug('check_with on %s with None' % (str(self)))
             return  # Assuming that None here means an error was already reported.
         # If either type is TYPE_ERROR, it means an error was already reported.
-        if (not self == other) and self.type != LP.TYPE_ERROR and other.type != LP.TYPE_ERROR:
-            Status.add_error(TypecheckError('expression has type `%s`, expected `%s`' %
-                                            (str(other), str(self)), pos))
+        if (self.type != LP.TYPE_ERROR and other.type != LP.TYPE_ERROR):
+            if not self._check_with(other):
+                Status.add_error(TypecheckError('expression has type `%s`, expected `%s`' %
+                                                (str(other), str(self)), pos))
 
 
 class FunSymbol(Symbol):
     """ A special kind of symbol for function declarations. """
 
-    def __init__(self, name, ret_type, args, tree, pos=None, classname=None):
+    def __init__(self, name, ret_type, args, tree, pos=None, cls=None):
         """ `args` is a list of Symbol instances -- function's argument types. """
-        super(FunSymbol, self).__init__(name, LP.FUNDEF, pos, classname)
+        super(FunSymbol, self).__init__(name, LP.FUNDEF, pos, cls)
         self.is_builtin = (not tree) or name == LP.Builtins.MAIN
         self.ret_type = ret_type
         self.args = args
@@ -126,7 +146,7 @@ class FunSymbol(Symbol):
         self.call_counter = 0
 
     def call_name(self):
-        if self.classname:
+        if self.cls:
             return self.tree.name
         return self.name
 

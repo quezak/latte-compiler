@@ -484,7 +484,7 @@ class VarCode(LiteralCode):
                                    mult=CC.var_size, addr_only=addr_only)
 
     def _gen_code_load_member(self, dest_reg, addr_only=False):
-        cls = self.tree.get_class(self.tree.classname)
+        cls = self.tree.cls
         m_idx = cls.get_member_idx(self.value)
         self.add_child_by_idx(0)  # evaluate the object's base address
         self.add_instr(CC.POP, dest=Loc.reg('a'))
@@ -674,10 +674,13 @@ class FuncallCode(ExprCode):
         self.arg_count = len(self.children) - 1 # Normal arguments, without `self`.
 
     def gen_code(self, **kwargs):
-        if self.fsym.classname:  # calling a method, the called expr must be an ATTR
+        if self.fsym.cls:  # calling a method, the called expr must be an ATTR
             for case in switch(self.children[0].type.type):
                 if case(LP.ATTR):
                     obj_expr = self.children[0].children[0]
+                    break
+                if case(LP.IDENT):
+                    obj_expr = None
                     break
                 if case():
                     raise InternalError('expr of invalid type `%s` to call' %
@@ -738,7 +741,7 @@ class NewCode(ExprCode):
             self.add_child(ExprFactory(child))
         self.value_type = tree.value_type
         if self.value_type.type == LP.OBJECT:
-            self.classname = tree.classname
+            self.cls = tree.cls
 
     def gen_code(self, **kwargs):
         for case in switch(self.value_type.type):
@@ -765,20 +768,19 @@ class NewCode(ExprCode):
                 break
             if case(LP.OBJECT):
                 # Allocate required space.
-                cls = self.tree.get_class(self.classname)
                 self.add_instr(CC.PUSH, src=Loc.const(0))  # Fill the memory with 0.
                 # Allocate space for the whole object, along with superclass members.
-                self.add_instr(CC.PUSH, src=Loc.const(cls.total_var_count * CC.var_size))
+                self.add_instr(CC.PUSH, src=Loc.const(self.cls.total_var_count * CC.var_size))
                 self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
                 self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
-                if cls.has_nonzero_initializers():
+                if self.cls.has_nonzero_initializers():
                     # Save %ebx to store the class base pointer there.
                     self.add_instr(CC.PUSH, src=Loc.reg('b'))
                     self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.reg('b'))
                     # Assign the non-0 default values and specified initializations.
                     old_instantiating_class = NewCode.instantiating_class
-                    NewCode.instantiating_class = (cls, Loc.reg('b'))
-                    self._add_nonzero_inits(cls)
+                    NewCode.instantiating_class = (self.cls, Loc.reg('b'))
+                    self._add_nonzero_inits(self.cls)
                     NewCode.instantiating_class = old_instantiating_class
                     # Restore %ebx and push the object memory pointer as expression result.
                     self.add_instr(CC.MOV, src=Loc.reg('b'), dest=Loc.reg('a'))

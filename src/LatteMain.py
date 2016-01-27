@@ -75,6 +75,8 @@ class Latc(object):
         cls.prog_tree.check_types()
         if Status.errors() > 0:
             Status.add_error(LatteError('compilation failed'), fatal=True)
+        debug('-------------- CHECKED TREE -------------------')
+        cls.prog_tree.print_tree()
 
     @classmethod
     def build_code(cls):

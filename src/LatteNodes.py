@@ -32,9 +32,7 @@ class LatteTree(object):
         self.level = None
         if 'pos' in kwargs:
             self.pos = kwargs['pos']
-            debug('kwarg ready pos=%s' % self.pos)
         elif 'pos_off' in kwargs:
-            debug('kwarg pos_off=%d' % kwargs['pos_off'])
             self.save_pos(kwargs['pos_off'])
         else:
             self.save_pos()
@@ -78,8 +76,10 @@ class LatteTree(object):
             debug('%s: shadowing symbol `%s %s`' % (symbol.pos, str(symbol), name))
         self.symbols[name] = symbol
 
-    def has_symbol(self, name):
+    def has_symbol(self, name, inclass=False):
         """ Check if there is a symbol with a given name declared. """
+        if inclass and self.is_class():
+            return
         if name in self.symbols:
             return True
         return (self.parent) and (self.parent.has_symbol(name))
@@ -158,6 +158,7 @@ class ProgTree(LatteTree):
     """ Node representing the whole program. """
     def __init__(self, **kwargs):
         super(ProgTree, self).__init__(**kwargs)
+        Symbol.prog = self
         self.add_builtin_symbols()
         self.classes = {}
 
@@ -326,10 +327,9 @@ class FunTree(LatteTree):
         self.add_symbol(sym)
         self.args.append(sym)
 
-    def get_fun_symbol(self, classname=None):
+    def get_fun_symbol(self, cls=None):
         block = self.children[0] if self.children else None
-        self.fun_symbol = FunSymbol(self.name, self.ret_type, self.args, self, self.pos,
-                                    classname=classname)
+        self.fun_symbol = FunSymbol(self.name, self.ret_type, self.args, self, self.pos, cls=cls)
         return self.fun_symbol
 
     def print_tree(self):
@@ -375,8 +375,9 @@ class FunTree(LatteTree):
         """ Recursively changes all class member IDENTs to ATTRs of `self` in tree's children. """
         for pos in xrange(len(tree.children)):
             node = tree.children[pos]
-            # If the symbol has a classname, it surely is one of the subclasses (typecheck passed).
-            if node.type.type == LP.IDENT and node.symbol(node.value).classname:
+            # Check if the symbol is an IDENT matching any (sub)class member or method.
+            if node.type.type == LP.IDENT and (self.cls.has_member(node.value) or
+                                               self.cls.has_method(node.value)):
                 self_var = VarTree(LP.IDENT, Builtins.SELF)
                 attr = VarTree(LP.ATTR, node.value, children=[self_var], pos=node.pos)
                 attr.set_parent(tree)
@@ -421,7 +422,7 @@ class ClassTree(LatteTree):
         self.mangles[tree.name] = self._mangle(tree.name);
         tree.mangled_name = self.mangles[tree.name]
         tree.add_symbol(Symbol(Builtins.SELF, DataType.mkobject(self.name)))  # only symbol for now
-        self.add_symbol(tree.get_fun_symbol(classname=self.name))
+        self.add_symbol(tree.get_fun_symbol(cls=self))
 
     def set_base_class(self, basename):
         self.base = basename
@@ -517,9 +518,19 @@ class ClassTree(LatteTree):
         """ Calculate member offset from class base pointer. """
         if name in self.members:
             # Offset within own members + superclass occupies first `base.total_var_count` slots.
+            res = self.members[name] + (self.base.total_var_count if self.base else 0)
+            debug('get_member_id %s in %s: => own, %d' % (name, self.name, res))
             return self.members[name] + (self.base.total_var_count if self.base else 0)
         # Superclass member lies within the first memory slots.
-        return self.base.get_member_idx(name)
+        res = self.base.get_member_idx(name)
+        debug('get_member_id %s in %s: super %s, %d' % (name, self.name, self.base.name, res))
+        return res
+
+    def has_member(self, name):
+        return name in self.members or (self.base and self.base.has_member(name))
+
+    def has_method(self, name):
+        return name in self.mangles or (self.base and self.base.has_method(name))
 
 
 # statement #####################################################################################
@@ -781,9 +792,9 @@ class DeclTree(StmtTree):
             Status.add_error(TypecheckError('`void` variable declaration', self.pos))
             return
         block = self.get_cur_block()
-        classname = None if not self.parent.is_class() else self.parent.name
+        cls = None if not self.parent.is_class() else self.parent
         for item in self.items:
-            dsym = Symbol(item.name, self.decl_type.type, item.pos, classname=classname)
+            dsym = Symbol(item.name, self.decl_type.type, item.pos, cls=cls)
             block.add_symbol(dsym)
             if item.expr:
                 item.expr.expect_type(self.decl_type)
@@ -813,7 +824,7 @@ class ExprTree(StmtTree):
         if isinstance(sym, FunSymbol):
             self.value_type = sym
         else:
-            self.value_type = Symbol('', sym.type, self.pos)
+            self.value_type = Symbol('', sym.type, self.pos, cls=sym.cls)
         if self.expected_type:
             self.expected_type.check_with(self.value_type, self.pos)
 
@@ -925,8 +936,10 @@ class VarTree(LiteralTree):
                 self._print_indented('] ELEM')
                 break
 
-    def _check_symbol(self, name):
-        if not self.has_symbol(name):
+    def _check_symbol(self, name, inclass=False):
+        if not self.has_symbol(name, inclass=inclass):
+            if inclass:
+                return self.cls._check_member(name, self.pos)
             Status.add_error(TypecheckError(
                 'use of undeclared variable `%s`' % name, self.pos))
             Status.add_note(TypecheckError(
@@ -963,9 +976,8 @@ class VarTree(LiteralTree):
                             'invalid attribute `%s` for type `%s`' % (
                                 self.value, str(self.obj_type)), self.pos))
                 elif self.obj_type.type == LP.OBJECT:
-                    cls = self.get_class(self.obj_type.type.subtype)
-                    self.set_value_type(cls._check_member(self.value, self.pos))
-                    self.classname = self.obj_type.type.subtype
+                    self.cls = self.get_class(self.obj_type.type.subtype)
+                    self.set_value_type(self._check_symbol(self.value, inclass=True))
                     break
                 elif self.obj_type.type != LP.TYPE_ERROR:
                     raise InternalError('ATTR for non-array/class type ' + str(self.obj_type))
@@ -1122,8 +1134,6 @@ class NewTree(ExprTree):
         # set_array_size() will be called later and type will be switched to Array.
         sym = Symbol('', value_type, self.pos)
         self.set_value_type(sym)
-        if self.value_type.type == LP.OBJECT:
-            self.classname = self.value_type.type.subtype
 
     def set_array_size(self, expr):
         self.add_child(expr)
@@ -1138,6 +1148,8 @@ class NewTree(ExprTree):
             self._print_indented('*= new %s' % str(self.value_type))
 
     def check_types(self):
+        if self.value_type.type == LP.OBJECT:
+            self.cls = self.get_class(self.value_type.type.subtype)
         for case in switch(self.value_type.type):
             if case(LP.ARRAY):
                 if len(self.children) < 1:
@@ -1147,12 +1159,12 @@ class NewTree(ExprTree):
                 self.check_children_types()
                 break
             if case(LP.OBJECT):
-                cls = self.get_class(self.classname)
-                if not cls:
-                    Status.add_error(TypecheckError('unknown type `%s`' % self.classname, self.pos))
+                if not self.cls:
+                    Status.add_error(TypecheckError('unknown type `%s`' %
+                                                    str(self.value_type.subtype), self.pos))
                 elif len(self.children):
                     raise InternalError('size for `new` with class at %s' % self.pos)
-                cls.count_new()
+                self.cls.count_new()
             if case(LP.TYPE_ERROR):
                 break
             if case():
