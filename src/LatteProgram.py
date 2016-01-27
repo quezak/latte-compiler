@@ -342,7 +342,7 @@ class LiteralCode(ExprCode):
 
     def _gen_code_as_value(self, **kwargs):
         for case in switch(self.type.type):
-            if case(LP.BOOLEAN, LP.INT, LP.OBJECT):
+            if case(LP.BOOLEAN, LP.INT, LP.OBJECT, LP.ARRAY):
                 self.add_instr(CC.PUSH, src=Loc.const(self.value))
                 break
             if case(LP.STRING):

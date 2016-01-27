@@ -63,7 +63,7 @@ class DataType(object):
     def __str__(self):
         s = LP.tokenNames[self.id]
         if self.id == LP.ARRAY:
-            s += '(%s)' % str(self.subtype)
+            s = '%s[]' % str(self.subtype)
         elif self.id == LP.OBJECT:
             s += ' %s' % self.subtype
         return s

@@ -108,9 +108,8 @@ fundef      : declType IDENT arglist block -> ^(FUNDEF declType IDENT arglist? b
 arglist     : LPAREN! (arg (LISTSEP! arg)* )? RPAREN!;
 arg         : declType IDENT -> ^(ARG declType IDENT);
 // TODO support arrays of objects
-declType    : plainType^
-            | plainType LSQUARE RSQUARE -> ^(ARRAY plainType)
-            ;
+dtSuffix    : LSQUARE RSQUARE -> ^(ARRAY);
+declType    : plainType^ (dtSuffix^)*;
 plainType   : INT | STRING | BOOLEAN | VOID
             | IDENT -> ^(OBJECT IDENT)
             ;
@@ -151,7 +150,7 @@ eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | IDENT^
             ;
 ePrimary    : eVar^ (varSuffix^)*
-            | NEW^ plainType (LSQUARE! expr RSQUARE!)?
+            | NEW^ declType (LSQUARE! expr RSQUARE!)?
             | NUMBER^
             | STRINGLIT^
             | LPAREN! declType RPAREN! NULL^

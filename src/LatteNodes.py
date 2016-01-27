@@ -507,7 +507,7 @@ class ForTree(BlockTree):
     def check_types(self):
         # Children after the morph: [array decl, loop_var decl, counter decl, while]
         # Expect that the child expr has type array(type of the decl child)
-        dtype = self.children[1].decl_type.type.id
+        dtype = self.children[1].decl_type.type
         self.array_expr.expect_type(Symbol('', DataType.mkarray(dtype)))
         self.array_expr.check_types()
         self.check_children_types()
@@ -672,7 +672,8 @@ class LiteralTree(ExprTree):
         debug('literal %s: pos %s' % (self.value, self.pos))
 
     def print_tree(self):
-        self._print_indented('= %s %s' % (str(self.type), self.value))
+        val = self.value if self.type.type not in [LP.OBJECT, LP.ARRAY] else 'NULL'
+        self._print_indented('= %s %s' % (str(self.type), val))
 
     def get_type(self):
         # return immediately if the type is already calculated
@@ -684,6 +685,7 @@ class LiteralTree(ExprTree):
                 if int(self.value) > self._int_max:
                     Status.add_error(TypecheckError(
                         'integer constant too large: `%s`' % self.value, self.pos))
+                    self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
                 # intentional fall-through
             if case():
                 self.set_value_type(self.type)
@@ -744,6 +746,9 @@ class VarTree(LiteralTree):
             if case(LP.ATTR):
                 self.children[0].check_types()
                 self.obj_type = self.children[0].value_type
+                self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
+                if self.children[0].value_type.type == LP.TYPE_ERROR:
+                    break
                 if not self.attributable():
                     Status.add_error(TypecheckError(
                         'request for member `%s` in non-class expression of type `%s`' % (
@@ -767,6 +772,7 @@ class VarTree(LiteralTree):
             if case(LP.ELEM):
                 self.children[0].check_types()
                 self.obj_type = self.children[0].value_type
+                self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
                 if self.obj_type.type == LP.ARRAY:
                     self.children[1].expect_type(Symbol('', LP.INT))
                     self.set_value_type(Symbol('', self.obj_type.type.subtype, self.pos))

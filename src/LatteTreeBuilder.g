@@ -83,7 +83,7 @@ arg returns [fa]
     ;
 
 declType returns [dt]
-    : ^(ARRAY t=plainType) { $dt = DataType.mkarray($t.dt); }
+    : ^(ARRAY t=declType) { $dt = DataType.mkarray($t.dt); }
     | plainType { $dt = $plainType.dt; }
     ;
 plainType returns [dt]
@@ -186,8 +186,8 @@ expr returns [lt]
     | ^(FUNCALL IDENT { $lt = FuncallTree(str($IDENT.text)); }
             (e=expr { $lt.add_child($e.lt); } )*
        )
-    | ^(NEW plainType
-        { $lt = NewTree($plainType.dt, pos_off=-2); }
+    | ^(NEW declType
+        { $lt = NewTree($declType.dt, pos_off=-2); }
             (size=expr { $lt.set_array_size($size.lt); })?
        )
     ;
