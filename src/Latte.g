@@ -50,7 +50,7 @@ class Builtins:
     LENGTH = 'length'
     FOR_COUNTER = '__for_counter__'
     FOR_ARRAY = '__for_array__'
-    SELF = '__self__'
+    SELF = 'self'
 }
 
 // Header pasted on the top of lexer file.
@@ -145,9 +145,9 @@ boolean     : TRUE | FALSE;
 
 varSuffix   : DOT attr=IDENT -> ^(ATTR $attr)
             | LSQUARE expr RSQUARE -> ^(ELEM expr)
+            | exprlist -> ^(FUNCALL exprlist?)
             ;
-eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
-            | LPAREN! expr^ RPAREN!
+eVar        : LPAREN! expr^ RPAREN!
             | IDENT^
             ;
 ePrimary    : eVar^ (varSuffix^)*

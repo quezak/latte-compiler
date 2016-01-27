@@ -147,7 +147,7 @@ class ClassCode(LatteCode):
         super(ClassCode, self).__init__(tree, **kwargs)
         self.name = tree.name
         for fun in tree.fundefs():
-            if tree.symbol(fun.old_name).call_counter > 0 or True:  # TODO remove True
+            if tree.symbol(fun.old_name).call_counter > 0:
                 self.add_fun_code(fun)
             else:
                 debug('skipping uncalled method `%s`' % fun.fun_symbol.full_name())
@@ -661,37 +661,51 @@ class BinopCode(ExprCode):
 class FuncallCode(ExprCode):
     def __init__(self, tree, **kwargs):
         super(FuncallCode, self).__init__(tree, **kwargs)
-        self.fname = tree.fname
-        self.fsym = tree.symbol(tree.fname)
+        self.fsym = tree.fun.value_type
         for exprtree in tree.children:
             self.add_child(ExprFactory(exprtree))
+        self.arg_count = len(self.children) - 1 # Normal arguments, without `self`.
 
     def gen_code(self, **kwargs):
+        if self.fsym.classname:  # calling a method, the called expr must be an ATTR
+            for case in switch(self.children[0].type.type):
+                if case(LP.ATTR):
+                    obj_expr = self.children[0].children[0]
+                    break
+                if case():
+                    raise InternalError('expr of invalid type `%s` to call' %
+                                        str(self.children[0].type))
+        else:
+            obj_expr = None
         # [1] Compute memory usage for arguments.
-        argmem = CC.var_size * len(self.children)
+        argmem = CC.var_size * self.arg_count
+        total_argmem = argmem + (CC.var_size if obj_expr else 0)
         # [2] Push arguments.
         # Arguments need to be pushed in reverse order, but evaluated in normal order -- hence
         # we first make enough stack space for all of them and move them in the right place after
         # evaluation.
-        if len(self.children) > 1:
+        if self.arg_count > 1:
             self.add_instr(CC.SUB, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
-            for i in xrange(len(self.children)):
-                self.add_child_by_idx(i)  # Leaves the value on stack.
+            for i in xrange(len(self.children)-1):  # One less -- [0] is the function!
+                self.add_child_by_idx(i+1)  # Leaves the value on stack.
                 self.add_instr(CC.POP, dest=Loc.reg('a'))
                 # i-th argument should be placed in 4*i(%esp)
                 self.add_instr(CC.MOV, src=Loc.reg('a'),
                                dest=Loc.mem(Loc.top, i * CC.var_size))
-        elif len(self.children) > 0:
-            self.add_child_by_idx(0)  # With only one argument we can just push it on stack.
+        elif self.arg_count > 0:
+            self.add_child_by_idx(1)  # With only one argument we can just push it on stack.
+        # [2a] When calling a method, push reference to `self` (first function's argument).
+        if obj_expr:
+            self.add_child_code(obj_expr)
         # [3] Call and pop arguments.
-        self.add_instr(CC.CALL, label=self.fname)
-        if argmem > 0:
-            self.add_instr(CC.ADD, lhs=Loc.const(argmem), rhs=Loc.reg('top'))
+        self.add_instr(CC.CALL, label=self.fsym.call_name())
+        if total_argmem > 0:
+            self.add_instr(CC.ADD, lhs=Loc.const(total_argmem), rhs=Loc.reg('top'))
         # [4] finish depending on how we were called:
         if self.has_jump_codes(kwargs):
             if self.fsym.ret_type.type != LP.BOOLEAN:
                 raise InternalError('jump-expr codes for non-bool function %s %s at %s!' % (
-                    self.fname, str(self.fsym), self.tree.pos))
+                    self.fsym.full_name(), str(self.fsym), self.tree.pos))
             # [4a] bool function as part of condition evaluation -- jump basing on the result
             # note: comparing with 0, so on equality jump to false!
             self.add_instr(CC.IF_JUMP, lhs=Loc.const(0), rhs=Loc.reg('a'),

@@ -185,8 +185,9 @@ expr returns [lt]
            a=expr b=expr
        )
         { $lt = BinopTree($op.type, $a.lt, $b.lt, pos=op_pos); }
-    | ^(FUNCALL IDENT { $lt = FuncallTree(str($IDENT.text)); }
-            (e=expr { $lt.add_child($e.lt); } )*
+    | ^(FUNCALL { $lt = FuncallTree(); }
+            (e=expr { $lt.add_child($e.lt); } )+
+            { $lt.end_of_arguments(); }
        )
     | ^(NEW declType
         { $lt = NewTree($declType.dt, pos_off=-2); }

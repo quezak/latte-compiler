@@ -268,7 +268,7 @@ class FunTree(LatteTree):
 
     def get_fun_symbol(self, classname=None):
         block = self.children[0] if self.children else None
-        self.fun_symbol = FunSymbol(self.name, self.ret_type, self.args, block, self.pos,
+        self.fun_symbol = FunSymbol(self.name, self.ret_type, self.args, self, self.pos,
                                     classname=classname)
         return self.fun_symbol
 
@@ -306,9 +306,11 @@ class FunTree(LatteTree):
         self.cls = cls
         self.old_name = self.name
         self.name = self.mangled_name
-        self.add_arg(FunArg(DataType.mkobject(cls.name), Builtins.SELF))
-        # Move `self` to first position in argument list.
-        self.args.insert(0, self.args.pop())
+        del self.symbols[Builtins.SELF]  # delete the symbol added earlier only for typechecking
+        self.add_arg(FunArg(DataType.mkobject(cls.name), Builtins.SELF))  # add the real `self`
+        self.args.insert(0, self.args.pop())  # move `self` so it's the first argument
+        self._member_idents_to_attrs(self.children[0])
+        self.dup = True
         self._member_idents_to_attrs(self.children[0])
 
     def _member_idents_to_attrs(self, tree):
@@ -322,6 +324,13 @@ class FunTree(LatteTree):
                 attr.check_types()  # to set type attributes
                 debug('changing %s to self.%s at %s' % (node.value, attr.value, node.pos))
                 debug('   type is %s, obj_type is %s' % (str(attr.value_type), str(attr.obj_type)))
+                # If the node is a decl, the item also needs to be changed...
+                if tree.type.type == LP.DECL:
+                    for item in tree.items:
+                        if item.expr is tree.children[pos]:
+                            debug('   also changing item.expr for decl %s' % item.name)
+                            item.expr = attr
+                            break
                 tree.children[pos] = attr
                 continue
             if len(node.children):
@@ -350,6 +359,7 @@ class ClassTree(LatteTree):
         self.add_child(tree)
         self.mangles[tree.name] = self._mangle(tree.name);
         tree.mangled_name = self.mangles[tree.name]
+        tree.add_symbol(Symbol(Builtins.SELF, DataType.mkobject(self.name)))  # only symbol for now
         self.add_symbol(tree.get_fun_symbol(classname=self.name))
 
     def _mangle(self, name):
@@ -389,9 +399,9 @@ class ClassTree(LatteTree):
         for decl in self.decls():
             for item in decl.items:
                 if (not isinstance(item.expr, LiteralTree) or
-                        (item.expr.type.type == LP.INT and item.expr.value != 0) or
+                        (item.expr.type.type == LP.INT and int(item.expr.value) != 0) or
                         (item.expr.type.type == LP.BOOLEAN and item.expr.value != 'false') or
-                        (item.expr.type.type == LP.OBJECT and item.expr.value != LP.NULL) or
+                        (item.expr.type.type == LP.OBJECT and int(item.expr.value) != LP.NULL) or
                         (item.expr.type.type == LP.STRING)):
                     return True
         return False
@@ -702,9 +712,15 @@ class ExprTree(StmtTree):
 
     def set_value_type(self, sym):
         # Note: don't just assign the symbol, not to overwrite its position.
-        self.value_type = Symbol('', sym.type, self.pos)
+        if isinstance(sym, FunSymbol):
+            self.value_type = sym
+        else:
+            self.value_type = Symbol('', sym.type, self.pos)
         if self.expected_type:
             self.expected_type.check_with(self.value_type, self.pos)
+
+    def set_type_error(self):
+        self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
 
     def settable(self):
         """ Check whether the variable can be assigned (e.g. tab.length can't). """
@@ -727,6 +743,10 @@ class ExprTree(StmtTree):
             if case(LP.ATTR):
                 return self.obj_type.type in [LP.ARRAY, LP.OBJECT]
         return False
+
+    def is_callable(self):
+        """ Check whether the variable can be called (is a function or a method). """
+        return self.value_type.type == LP.FUNDEF
 
 
 # literal #######################################################################################
@@ -768,7 +788,7 @@ class LiteralTree(ExprTree):
                 if int(self.value) > self._int_max:
                     Status.add_error(TypecheckError(
                         'integer constant too large: `%s`' % self.value, self.pos))
-                    self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
+                    self.set_type_error()
                 # intentional fall-through
             if case():
                 self.set_value_type(self.type)
@@ -829,7 +849,7 @@ class VarTree(LiteralTree):
             if case(LP.ATTR):
                 self.children[0].check_types()
                 self.obj_type = self.children[0].value_type
-                self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
+                self.set_type_error()
                 if self.children[0].value_type.type == LP.TYPE_ERROR:
                     break
                 if not self.attributable():
@@ -855,7 +875,7 @@ class VarTree(LiteralTree):
             if case(LP.ELEM):
                 self.children[0].check_types()
                 self.obj_type = self.children[0].value_type
-                self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
+                self.set_type_error()
                 if self.obj_type.type == LP.ARRAY:
                     self.children[1].expect_type(Symbol('', LP.INT))
                     self.set_value_type(Symbol('', self.obj_type.type.subtype, self.pos))
@@ -951,38 +971,46 @@ class BinopTree(ExprTree):
 # function call #################################################################################
 class FuncallTree(ExprTree):
     """ Node for function calls. """
-    def __init__(self, fname, **kwargs):
+    def __init__(self, **kwargs):
         super(FuncallTree, self).__init__(LP.FUNCALL, **kwargs)
-        self.fname = fname
+        # Children: expr+, after initialization the first one is the function, rest are arguments.
 
     def print_tree(self):
-        self._print_indented('>FUNCALL %s' % self.fname)
-        self._print_children()
-        self._print_indented('<FUNCALL %s' % self.fname)
+        self._print_indented('>FUNCALL')
+        self.children[0].print_tree()
+        self._print_indented('-- args:')
+        for pos in xrange(1, len(self.children)):
+            self.children[pos].print_tree()
+        self._print_indented('<FUNCALL')
+
+    def end_of_arguments(self):
+        """ Called by the parser to indicate end of expressions. The last one that was added
+        is the function to be called. """
+        # Move the function expression to first position.
+        self.children.insert(0, self.children.pop())
+        self.fun = self.children[0]
 
     def check_types(self):
-        # [1] Check if the called name exists and is a function.
-        if not self.has_symbol(self.fname):
-            Status.add_error(TypecheckError(
-                'call to undeclared function `%s`' % self.fname, self.pos))
-            return
-        fsym = self.symbol(self.fname)
-        if not fsym.is_function():
-            Status.add_error(TypecheckError(
-                'cannot call symbol `%s` of type `%s`' % (self.fname, str(fsym)), self.pos))
+        # [1] Check if the called expression is valid and a function.
+        self.fun.check_types()
+        fsym = self.fun.value_type
+        if not self.fun.is_callable():
+            Status.add_error(TypecheckError('cannot call expression of type `%s`' %
+                                            str(fsym), self.fun.pos))
+            self.set_type_error()
             return
         fsym.call_counter += 1
-        # [2] Check the number of arguments.
         self.set_value_type(fsym.ret_type)
-        if len(self.children) != len(fsym.args):
+        # [2] Check the number of arguments.
+        if len(self.children) - 1 != len(fsym.args):
             Status.add_error(TypecheckError(
-                '%d arguments given, function `%s` takes %d' %
-                (len(self.children), self.fname, len(fsym.args)), self.pos))
+                '%d arguments given, function %s takes %d' %
+                (len(self.children) - 1, fsym.full_name(), len(fsym.args)), self.pos))
             if fsym.pos:  # Without position it's probably a builtin and the note wouldn't help.
                 Status.add_note(TypecheckError('as declared here', fsym.pos))
         # [3] Check the types of arguments.
-        for i in xrange(min(len(self.children), len(fsym.args))):
-            self.children[i].expect_type(fsym.args[i])
+        for i in xrange(min(len(self.children)-1, len(fsym.args))):
+            self.children[i+1].expect_type(fsym.args[i])
         self.check_children_types()
 
 

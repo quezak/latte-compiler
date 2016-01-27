@@ -61,7 +61,7 @@ class DataType(object):
         return not result
 
     def __str__(self):
-        s = LP.tokenNames[self.id]
+        s = LP.tokenNames[self.id].lower()
         if self.id == LP.ARRAY:
             s = '%s[]' % str(self.subtype)
         elif self.id == LP.OBJECT:
@@ -91,7 +91,7 @@ class Symbol(object):
         return not result
 
     def __str__(self):
-        return str(self.type).lower()
+        return str(self.type)
 
     def full_name(self):
         return (self.classname + '::' if self.classname else '') + self.name
@@ -116,14 +116,19 @@ class Symbol(object):
 class FunSymbol(Symbol):
     """ A special kind of symbol for function declarations. """
 
-    def __init__(self, name, ret_type, args, block, pos=None, classname=None):
+    def __init__(self, name, ret_type, args, tree, pos=None, classname=None):
         """ `args` is a list of Symbol instances -- function's argument types. """
         super(FunSymbol, self).__init__(name, LP.FUNDEF, pos, classname)
-        self.is_builtin = block is None or name == LP.Builtins.MAIN
+        self.is_builtin = (not tree) or name == LP.Builtins.MAIN
         self.ret_type = ret_type
         self.args = args
-        self.block = block
+        self.tree = tree
         self.call_counter = 0
+
+    def call_name(self):
+        if self.classname:
+            return self.tree.name
+        return self.name
 
     def __eq__(self, other):
         """ If the other symbol is also a function, check type and argument types. """
