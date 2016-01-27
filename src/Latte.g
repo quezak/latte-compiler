@@ -114,7 +114,8 @@ declType    : plainType^ (dtSuffix^)*;
 plainType   : INT | STRING | BOOLEAN | VOID
             | IDENT -> ^(OBJECT IDENT)
             ;
-classdef    : CLASS^ IDENT LBRACE! (decl | fundef)* RBRACE!;
+classdef    : CLASS^ IDENT extends? LBRACE! (decl | fundef)* RBRACE!;
+extends     : EXTENDS^ IDENT;
 
 // statements ----------------------------------------------
 block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
@@ -216,6 +217,7 @@ FALSE       : 'false';
 NEW         : 'new';
 CLASS       : 'class';
 NULL        : 'null';
+EXTENDS     : 'extends';
 NUMBER      : ('0'..'9')+;
 IDENT       : IDFCHAR (IDCHAR)*;
 fragment IDFCHAR : ('a'..'z' | 'A'..'Z' | '_');

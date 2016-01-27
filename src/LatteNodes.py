@@ -122,21 +122,18 @@ class LatteTree(object):
 
     def get_cur_fun(self):
         """ Returns the node of the current function. """
-        if not self.parent:
-            return None
-        return self.parent.get_cur_fun()
+        return self.parent and self.parent.get_cur_fun()
 
     def get_cur_block(self):
         """ Returns the closest (up the tree) block node. """
-        if not self.parent:
-            return None
-        return self.parent.get_cur_block()
+        return self.parent and self.parent.get_cur_block()
 
     def get_class(self, name):
         """ Returns the class definition node for a class name. """
-        if not self.parent:
-            return None
-        return self.parent.get_class(name)
+        return self.parent and self.parent.get_class(name)
+
+    def get_prog(self):
+        return self.parent and self.parent.get_prog()
 
     def _clear_symbols(self):
         """ Clears the symbol tables. """
@@ -215,7 +212,17 @@ class ProgTree(LatteTree):
                                                (Builtins.MAIN, str(main_exp)), main_sym.pos))
         else:
             Status.add_error(TypecheckError('`%s` function not defined' % Builtins.MAIN, None))
-        self.check_children_types()
+        # First, assign the base classes from names.
+        for cls in self.classdefs():
+            if cls.base:
+                cls.base = self._check_extends(cls.base, cls)
+            if cls.base:
+                cls.parent = cls.base
+        # We need to check types for classes from the leaves of inheritance tree.
+        self._check_class_types()
+        # Now, check types in functions.
+        for fundef in self.fundefs():
+            fundef.check_types()
         # Warn about unused non-builtin functions
         for sym in self.symbols.values():
             if sym.is_function() and not sym.is_builtin and sym.call_counter == 0:
@@ -225,6 +232,8 @@ class ProgTree(LatteTree):
             if cls.new_count == 0:
                 Status.add_warning(TypecheckError(
                     'class `%s` defined but never instantiated' % cls.name, cls.pos))
+        for cls in self.classes.values():
+            cls.morph_methods()
         # Checking the symbols builds symbol tables, so we need to clear them before continuing.
         self._clear_symbols()
 
@@ -237,6 +246,45 @@ class ProgTree(LatteTree):
         """ Generator for iterating through member declarations. """
         for cls in ifilter(lambda n: not n.is_function(), self.children):
             yield cls
+
+    def _check_extends(self, name, cls):
+        if name not in self.symbols:
+            Status.add_error(TypecheckError('extending undeclared class `%s`' % name, cls.pos))
+            Status.add_note(TypecheckError('each undeclared class is reported only once'))
+            # add a dummy type-error symbol to prevent further errors about this variable
+            self.add_symbol(Symbol(name, LP.TYPE_ERROR, cls.pos))
+        if self.symbols[name].type == LP.TYPE_ERROR:
+            return None
+        supers = [c for c in self.classes[name].superclasses()]
+        if cls in supers:
+            Status.add_error(TypecheckError('cannot extend `%s` with `%s`: circular dependencies' %
+                                            (cls.name, name), self.classes[name].pos))
+            idx = supers.index(cls)
+            supers.extend(supers[0:idx])
+            supers[0:idx] = []
+            for sup in supers:
+                Status.add_note(TypecheckError('inheritance cycle continues here', sup.pos))
+            return None
+        return self.classes[name]
+
+    def _check_class_types(self):
+        count = len(self.classes)
+        while count:
+            for cls in self.classdefs():
+                if (not cls.base) or cls.base.checked:
+                    debug('typecheck class %s' % cls.name)
+                    cls.check_types()
+                    count -= 1
+
+    def get_prog(self):
+        return self
+
+    def subclasses(self, cls):
+        """ Generate all subclasses of a class. """
+        for subcls in ifilter(lambda c: c.base is cls, self.classes.values()):
+            yield subcls
+            for subsub in self.subclasses(subcls):
+                yield subsub
 
 
 # function ######################################################################################
@@ -310,8 +358,6 @@ class FunTree(LatteTree):
         self.add_arg(FunArg(DataType.mkobject(cls.name), Builtins.SELF))  # add the real `self`
         self.args.insert(0, self.args.pop())  # move `self` so it's the first argument
         self._member_idents_to_attrs(self.children[0])
-        self.dup = True
-        self._member_idents_to_attrs(self.children[0])
 
     def _member_idents_to_attrs(self, tree):
         """ Recursively changes all class member IDENTs to ATTRs of `self` in tree's children. """
@@ -348,6 +394,8 @@ class ClassTree(LatteTree):
         self.new_count = 0
         self.members = {}  # map from member name to index (used for memory offset calculation)
         self.mangles = {}  # map from method name to mangled function names
+        self.base = None
+        self.checked = False
     
     def add_member_decl(self, tree):
         self.add_child(tree)
@@ -361,6 +409,9 @@ class ClassTree(LatteTree):
         tree.mangled_name = self.mangles[tree.name]
         tree.add_symbol(Symbol(Builtins.SELF, DataType.mkobject(self.name)))  # only symbol for now
         self.add_symbol(tree.get_fun_symbol(classname=self.name))
+
+    def set_base_class(self, basename):
+        self.base = basename
 
     def _mangle(self, name):
         """ Create a global function name from class and method names. There are no function
@@ -386,7 +437,9 @@ class ClassTree(LatteTree):
         return self
 
     def _check_member(self, name, pos):
-        if name not in self.symbols:  # search *only* in the current class!
+        if name not in self.symbols:  # search only in this class and superclasses
+            if self.base:
+                return self.base._check_member(name, pos)
             Status.add_error(TypecheckError(
                 'use of undeclared member `%s::%s`' % (self.name, name), pos))
             Status.add_note(TypecheckError(
@@ -394,6 +447,13 @@ class ClassTree(LatteTree):
             # add a dummy type-error symbol to prevent further errors about this variable
             self.add_symbol(Symbol(name, LP.TYPE_ERROR, pos))
         return self.symbols[name]
+
+    def check_types(self):
+        for decl in self.decls():
+            decl.check_types()
+        for fun in self.fundefs():
+            fun.check_types()
+        self.checked = True
 
     def has_nonzero_initializers(self):
         for decl in self.decls():
@@ -414,14 +474,28 @@ class ClassTree(LatteTree):
     def is_class(self):
         return True
 
-    def _clear_symbols(self):
-        """ Clears symbol tables except for the method declarations. """
-        # But transform member functions into proper methods while still having symbols.
+    def morph_methods(self):
+        """ Transform member functions into proper methods. """
         for method in self.fundefs():
             method.morph_to_method(self)
+
+    def _clear_symbols(self):
+        """ Clears symbol tables except for the method declarations. """
         self.symbols = { name: sym for name, sym in self.symbols.items() if sym.is_function() }
         for child in self.children:
             child._clear_symbols()
+
+    def superclasses(self):
+        """ Generates all superclasses of this class. """
+        node = self.parent
+        while node.is_class():
+            yield node
+            node = node.parent
+
+    def count_new(self):
+        self.new_count += 1
+        if self.base:
+            self.base.count_new()
 
 
 # statement #####################################################################################
@@ -995,9 +1069,10 @@ class FuncallTree(ExprTree):
         self.fun.check_types()
         fsym = self.fun.value_type
         if not self.fun.is_callable():
-            Status.add_error(TypecheckError('cannot call expression of type `%s`' %
-                                            str(fsym), self.fun.pos))
-            self.set_type_error()
+            if self.fun.value_type.type != LP.TYPE_ERROR:
+                Status.add_error(TypecheckError('cannot call expression of type `%s`' %
+                                                str(fsym), self.fun.pos))
+                self.set_type_error()
             return
         fsym.call_counter += 1
         self.set_value_type(fsym.ret_type)
@@ -1053,7 +1128,7 @@ class NewTree(ExprTree):
                     Status.add_error(TypecheckError('unknown type `%s`' % self.classname, self.pos))
                 elif len(self.children):
                     raise InternalError('size for `new` with class at %s' % self.pos)
-                cls.new_count += 1
+                cls.count_new()
             if case(LP.TYPE_ERROR):
                 break
             if case():
