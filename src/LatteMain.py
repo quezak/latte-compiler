@@ -63,6 +63,8 @@ class Latc(object):
         Status.set_node_stream(cls.nodes)
         cls.builder = LatteTreeBuilder(cls.nodes)
         cls.prog_tree = cls.builder.prog()
+        if Status.errors() > 0:
+            Status.add_error(LatteError('parsing failed'), fatal=True)
         debug('---------------- TREE -------------------------')
         cls.prog_tree.print_tree()
 

@@ -21,10 +21,9 @@ class DataType(object):
             self.subtype = type.subtype
         if subtype:
             self.subtype = subtype
-        # TODO remove assertions after testing
         assert(self.id is None or isinstance(self.id, int))
-        # TODO allow arrays of non-plain objects
-        assert(self.subtype is None or (self.id == LP.ARRAY and isinstance(self.subtype, int)) or
+        assert(self.subtype is None or
+               (self.id == LP.ARRAY and isinstance(self.subtype, DataType)) or
                (self.id == LP.OBJECT and isinstance(self.subtype, str)))
     
     @classmethod
@@ -38,7 +37,7 @@ class DataType(object):
     @classmethod
     def mkarray(cls, subtype):
         """ Factory method returning array types. """
-        return cls(LP.ARRAY, subtype)
+        return cls(LP.ARRAY, cls(subtype))
 
     @classmethod
     def mkobject(cls, classname):
@@ -64,7 +63,7 @@ class DataType(object):
     def __str__(self):
         s = LP.tokenNames[self.id]
         if self.id == LP.ARRAY:
-            s += '(%s)' % LP.tokenNames[self.subtype]
+            s += '(%s)' % str(self.subtype)
         elif self.id == LP.OBJECT:
             s += ' %s' % self.subtype
         return s

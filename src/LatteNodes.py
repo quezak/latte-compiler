@@ -314,7 +314,7 @@ class ClassTree(LatteTree):
     def _check_member(self, name, pos):
         if name not in self.symbols:  # search *only* in the current class!
             Status.add_error(TypecheckError(
-                'use of undeclared member `%s.%s`' % (self.name, name), pos))
+                'use of undeclared member `%s::%s`' % (self.name, name), pos))
             Status.add_note(TypecheckError(
                 'each undeclared member is reported only once in each class'))
             # add a dummy type-error symbol to prevent further errors about this variable
@@ -519,7 +519,7 @@ class ForTree(BlockTree):
         self.array_expr = old_children[1]
         loop_var = old_children[0].items[0].name
         # [0] Evaluate the array expresion once.
-        array_decl = DeclTree(DataType.mkarray(old_children[0].decl_type.type.id))
+        array_decl = DeclTree(DataType.mkarray(old_children[0].decl_type.type))
         array_decl.add_item(DeclArg(Builtins.FOR_ARRAY, self.pos, self.array_expr))
         self.add_stmt(array_decl)
         # [1] Add declarations for the loop counter and loop value.
@@ -910,13 +910,8 @@ class NewTree(ExprTree):
             self.classname = self.value_type.type.subtype
 
     def set_array_size(self, expr):
-        # TODO support arrays of objects
-        if self.value_type.type not in DataType.PLAIN_TYPES:
-            Status.add_error(TypecheckError('object arrays not yet supported'), self.pos)
-            self.set_value_type(Symbol('', LP.TYPE_ERROR, self.pos))
-            return
         self.add_child(expr)
-        self.set_value_type(Symbol('', DataType.mkarray(self.value_type.type.id), self.pos))
+        self.set_value_type(Symbol('', DataType.mkarray(self.value_type.type), self.pos))
 
     def print_tree(self):
         if len(self.children):

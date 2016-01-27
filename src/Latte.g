@@ -150,7 +150,7 @@ eVar        : IDENT exprlist -> ^(FUNCALL IDENT exprlist?)
             | LPAREN! expr^ RPAREN!
             | IDENT^
             ;
-ePrimary    : eVar^ (varSuffix^)?
+ePrimary    : eVar^ (varSuffix^)*
             | NEW^ plainType (LSQUARE! expr RSQUARE!)?
             | NUMBER^
             | STRINGLIT^

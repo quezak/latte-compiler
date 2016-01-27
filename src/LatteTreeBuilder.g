@@ -17,12 +17,16 @@ from FuturePrint import debug
 from LatteLexer import LatteLexer
 from LatteParser import LatteParser
 import LatteParser as LP
-from LatteErrors import Status
+from LatteErrors import Status, ParserError
 from LatteNodes import *
 from LatteUtils import FunArg, DeclArg, DataType
 }
 
 @members {
+def displayRecognitionError(self, tokenNames, e):
+    """ Saves the error into the error set. """
+    msg = self.getErrorMessage(e, tokenNames)
+    Status.add_error(ParserError(msg, e.line, e.charPositionInLine))
 }
 
 @main {
@@ -79,7 +83,7 @@ arg returns [fa]
     ;
 
 declType returns [dt]
-    : ^(ARRAY t=(INT | STRING | BOOLEAN | VOID)) { $dt = DataType.mkarray($t.type); }
+    : ^(ARRAY t=plainType) { $dt = DataType.mkarray($t.dt); }
     | plainType { $dt = $plainType.dt; }
     ;
 plainType returns [dt]
