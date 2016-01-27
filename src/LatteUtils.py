@@ -71,10 +71,11 @@ class DataType(object):
 
 class Symbol(object):
     """ Class representing a symbol (name, type and possibly location of declaration). """
-    def __init__(self, name, type, pos=None):
+    def __init__(self, name, type, pos=None, classname=None):
         super(Symbol, self).__init__()
         self.name = name
         self.pos = pos
+        self.classname = classname
         self.type = DataType(type)
 
     def __eq__(self, other):
@@ -91,6 +92,9 @@ class Symbol(object):
 
     def __str__(self):
         return str(self.type).lower()
+
+    def full_name(self):
+        return (self.classname + '::' if self.classname else '') + self.name
 
     def is_function(self):
         return False
@@ -112,9 +116,9 @@ class Symbol(object):
 class FunSymbol(Symbol):
     """ A special kind of symbol for function declarations. """
 
-    def __init__(self, name, ret_type, args, block, pos=None):
+    def __init__(self, name, ret_type, args, block, pos=None, classname=None):
         """ `args` is a list of Symbol instances -- function's argument types. """
-        super(FunSymbol, self).__init__(name, LP.FUNDEF, pos)
+        super(FunSymbol, self).__init__(name, LP.FUNDEF, pos, classname)
         self.is_builtin = block is None or name == LP.Builtins.MAIN
         self.ret_type = ret_type
         self.args = args

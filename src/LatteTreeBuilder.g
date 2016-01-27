@@ -98,7 +98,9 @@ block returns [lt=BlockTree()]
 classdef returns [lt]
     : ^(CLASS
             IDENT { $lt = ClassTree(str($IDENT.text)); }
-            (decl { $lt.add_member_decl($decl.lt); })*
+            ( decl { $lt.add_member_decl($decl.lt); }
+            | fundef { $lt.add_method($fundef.lt); }
+            )*
        )
     ;
         

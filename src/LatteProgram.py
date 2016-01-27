@@ -76,12 +76,11 @@ class LatteCode(object):
 class ProgCode(LatteCode):
     def __init__(self, tree, **kwargs):
         super(ProgCode, self).__init__(tree, **kwargs)
-        for child in tree.children:
-            if child.symbol(child.name).is_function():
-                if child.symbol(child.name).call_counter > 0 or child.name == LP.Builtins.MAIN:
-                    self.add_fun_code(child)
-                else:
-                    debug('skipping uncalled function `%s`' % child.name)
+        for child in tree.fundefs():
+            if child.symbol(child.name).call_counter > 0 or child.name == LP.Builtins.MAIN:
+                self.add_fun_code(child)
+            else:
+                debug('skipping uncalled function `%s`' % child.name)
 
     def add_fun_code(self, funtree):
         self.add_child(FunCode(funtree))
@@ -726,7 +725,7 @@ class NewCode(ExprCode):
                     # Assign the non-0 default values and specified initializations.
                     old_instantiating_class = NewCode.instantiating_class
                     NewCode.instantiating_class = (cls, Loc.reg('b'))
-                    for decl in cls.children:
+                    for decl in cls.decls():
                         dtype = decl.decl_type.type
                         for item in decl.items:
                             expr_code = ExprFactory(item.expr)

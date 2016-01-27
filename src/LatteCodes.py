@@ -153,7 +153,8 @@ class Codes(object):
                     var_space = Loc.const((code['tree'].var_count) * cls.var_size)
                     yield cls._str_asm('addl', [str(var_space), '%esp'], code)
                 yield cls._str_asm('leave', [], code)
-                yield cls._str_asm('ret', [], {'comment': 'function ' + code['label']})
+                yield cls._str_asm('ret', [], {'comment': 'function ' +
+                                               code['tree'].tree.fun_symbol.full_name()})
                 return
             if case(cls.ADD, cls.SUB, cls.MUL):
                 op = {cls.ADD: 'addl', cls.SUB: 'subl', cls.MUL: 'imull'}[code['type']]

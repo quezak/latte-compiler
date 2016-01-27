@@ -5,6 +5,8 @@ for checking expression and return types, function calls, returns on every branc
 checks. """
 
 import abc
+from itertools import ifilter
+
 import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
@@ -66,7 +68,7 @@ class LatteTree(object):
         # not self.has_symbol(name) -- we search for conflicts only on the current level
         if name in self.symbols and self.symbol(name).type != LP.TYPE_ERROR:
             Status.add_error(TypecheckError('conflicting declaration of `%s` as `%s`' % (
-                name, str(symbol)), symbol.pos))
+                symbol.full_name(), str(symbol)), symbol.pos))
             if self.symbol(name).pos:
                 msg = 'previously declared here as `%s`'
             else:
@@ -141,6 +143,17 @@ class LatteTree(object):
         self.symbols = dict()
         for child in self.children:
             child._clear_symbols()
+
+    def is_function(self):
+        return False
+
+    def is_class(self):
+        return False
+
+    def fundefs(self):
+        """ Generator for iterating through method definitions. """
+        for fun in ifilter(lambda n: n.is_function(), self.children):
+            yield fun
 
 
 # program #######################################################################################
@@ -220,6 +233,11 @@ class ProgTree(LatteTree):
         for child in self.children:
             child._clear_symbols()
 
+    def classes(self):
+        """ Generator for iterating through member declarations. """
+        for cls in ifilter(lambda n: not n.is_function(), self.children):
+            yield cls
+
 
 # function ######################################################################################
 class FunTree(LatteTree):
@@ -248,14 +266,16 @@ class FunTree(LatteTree):
         self.add_symbol(sym)
         self.args.append(sym)
 
-    def get_fun_symbol(self):
+    def get_fun_symbol(self, classname=None):
         block = self.children[0] if self.children else None
-        return FunSymbol(self.name, self.ret_type, self.args, block, self.pos)
+        self.fun_symbol = FunSymbol(self.name, self.ret_type, self.args, block, self.pos,
+                                    classname=classname)
+        return self.fun_symbol
 
     def print_tree(self):
-        self._print_indented('>FUN %s %s' % (self.name, str(self.get_fun_symbol())))
+        self._print_indented('>FUN %s %s' % (self.fun_symbol.full_name(), str(self.fun_symbol)))
         self._print_children()
-        self._print_indented('<FUN %s' % self.name)
+        self._print_indented('<FUN %s' % self.fun_symbol.full_name())
 
     def get_cur_fun(self):
         """ Returns the node of the current function. """
@@ -277,6 +297,9 @@ class FunTree(LatteTree):
             if not ret_stmt:
                 self.no_return_error(self.children[0].pos)
 
+    def is_function(self):
+        return True
+
 
 # class #########################################################################################
 class ClassTree(LatteTree):
@@ -288,6 +311,7 @@ class ClassTree(LatteTree):
         self.var_count = 0
         self.new_count = 0
         self.members = {}  # map from member name to index (used for memory offset calculation)
+        self.mangles = {}  # map from method name to mangled function names
     
     def add_member_decl(self, tree):
         self.add_child(tree)
@@ -295,12 +319,25 @@ class ClassTree(LatteTree):
         for item in tree.items:
             self.members[item.name] = len(self.members)
 
+    def add_method(self, tree):
+        self.add_child(tree)
+        self.mangles[tree.name] = self._mangle(tree.name);
+        tree.mangled_name = self.mangles[tree.name]
+        self.add_symbol(tree.get_fun_symbol(classname=self.name))
+
+    def _mangle(self, name):
+        """ Create a global function name from class and method names. There are no function
+        overloading in Latte, so simple concatenation is sufficient. """
+        return '__%s__%s' % (self.name, name)
+
     def print_tree(self):
         self._print_indented('>CLASS %s' % self.name)
-        for decl in self.children:
+        for decl in self.decls():
             for item in decl.items:
                 self._print_indented('  = #%d: %s %s' % (self.members[item.name],
                                                          str(decl.decl_type), item.name))
+        for fun in self.fundefs():
+            fun.print_tree()
         self._print_indented('<CLASS %s' % self.name)
 
     def get_cur_block(self):
@@ -322,7 +359,7 @@ class ClassTree(LatteTree):
         return self.symbols[name]
 
     def has_nonzero_initializers(self):
-        for decl in self.children:
+        for decl in self.decls():
             for item in decl.items:
                 if (not isinstance(item.expr, LiteralTree) or
                         (item.expr.type.type == LP.INT and item.expr.value != 0) or
@@ -331,6 +368,14 @@ class ClassTree(LatteTree):
                         (item.expr.type.type == LP.STRING)):
                     return True
         return False
+
+    def decls(self):
+        """ Generator for iterating through member declarations. """
+        for decl in ifilter(lambda n: not n.is_function(), self.children):
+            yield decl
+
+    def is_class(self):
+        return True
 
 
 # statement #####################################################################################
@@ -484,6 +529,7 @@ class BlockTree(StmtTree):
                 return ret_stmt
         return None
 
+
 # foreach loop ##################################################################################
 class ForTree(BlockTree):
     """ Node representing a foreach loop -- deriving from Block to have its own scope.
@@ -591,8 +637,9 @@ class DeclTree(StmtTree):
             Status.add_error(TypecheckError('`void` variable declaration', self.pos))
             return
         block = self.get_cur_block()
+        classname = None if not self.parent.is_class() else self.parent.name
         for item in self.items:
-            dsym = Symbol(item.name, self.decl_type.type, item.pos)
+            dsym = Symbol(item.name, self.decl_type.type, item.pos, classname=classname)
             block.add_symbol(dsym)
             if item.expr:
                 item.expr.expect_type(self.decl_type)

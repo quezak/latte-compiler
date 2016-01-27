@@ -113,7 +113,7 @@ declType    : plainType^ (dtSuffix^)*;
 plainType   : INT | STRING | BOOLEAN | VOID
             | IDENT -> ^(OBJECT IDENT)
             ;
-classdef    : CLASS^ IDENT LBRACE! (decl)* RBRACE!;
+classdef    : CLASS^ IDENT LBRACE! (decl | fundef)* RBRACE!;
 
 // statements ----------------------------------------------
 block       : LBRACE stmt* RBRACE -> ^(BLOCK stmt*);
