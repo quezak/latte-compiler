@@ -76,6 +76,12 @@ Optymalizator w jednym przebiegu uruchamia kolejno opisane niżej metody. Liczba
 #### Tablice
 Tablice `N`-elementowe alokowane są na stercie jako blok pamięci o rozmiarze `N+1` zmiennych. W pierwszej komórce pamięci wpisany jest rozmiar tablicy, zwracany w czasie stałym jako atrybut `.length`; zaś w dalszych komórkach kolejne wartości -- zmienne typów prostych lub referencje do typów złożonych. Możliwe jest oczywiście tworzenie tablic obiektów, tablic wielowymiarowych oraz tablic o niestałej długości. Operator `[]` i atrybut `.length` mogą być stosowane również bezpośrednio do wyrażeń zwracających typ tablicowy, w tym wyników obiektów tymczasowych jak wynik funkcji czy operatora `new`. Przy alokacji nowej tablicy jej elementy są ustawione na wartość domyślną danego typu -- `0` dla liczb, `false` dla wartości logicznych, `""` dla napisów oraz `null` dla referencji obiektów i innych tablic.
 
+#### Struktury
+Struktury o `N` polach alokowane są jako blok pamięci o `N` zmiennych -- rozmiar struktury jest stały, więc nie ma potrzeby przechowywania jego rozmiaru w pamięci jak przy tablicach. Przy wyliczaniu wyrażenia które jest atrybutem struktury obliczane jest przesunięcie danego pola względem adresu początku struktury. Struktury, tak jak i tablice, można porównywać z innymi obiektami jak i wartością `null` (o ile są właściwego typu) operatorami `==` i `!=` -- jest to porównanie równości wskaźników.
+
+#### Inicjacja pól obiektów
+Mimo że specyfikacja zadania tego nie wymaga, z braku dostępności konstruktorów postanowiłem dla ułatwienia wprowadzić inicjalizatory domyślnych wartości dla pól obiektów. Wzorując się na `C++11`, przy deklaracji pola można dopisać podstawienie dowolnym wyrażeniem które korzysta z już dostępnych wartości -- w tym funkcji globalnych nie korzystających z danej klasy oraz zainicjowanych wcześniej pól (w tym pól podklasy). Jeśli wyrażenie nie jest podane, podstawiana jest domyślna wartość dla danego typu, jak w tablicach. Pola inicjowane są w kolejności deklaracji.
+
 ### Użyta dokumentacja
  * [dokumentacja i samouczki ANTLR3](https://theantlrguy.atlassian.net/wiki/display/ANTLR3/ANTLR+v3+documentation);
  * [dokumentacja API pythonowego dla ANTLR3](http://www.antlr3.org/api/index.html);
