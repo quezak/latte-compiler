@@ -6,7 +6,7 @@ Artur Kozak [320770], `artur.kozak@students.mimuw.edu.pl`
 
 Kompilator języka [Latte](http://www.mimuw.edu.pl/~ben/Zajecia/Mrj2015/latte.html) do asemblera x86. Parsery i przetwarzanie drzewa składni zostało zrealizowane przy pomocy [ANTLR](www.antlr.org) w wersji 3.1. Całość logiki została napisana w Pythonie 2.7 (niestety, bilbioteki antlr3 nie obsługują pythona3, zaś w momencie rozpoczynania projektu antlr4 nie był jeszcze w pełni dostępny).
 
-### Parametry wywołania
+## Parametry wywołania
 ```sh
 latc_x86 [-h] [-o BIN_FILE] [-s ASM_FILE] [-d] [-r RUNTIME_FILE] [-C]
                 [-O OPTIMIZER_PASSES] [--optimizer-summary]
@@ -24,7 +24,7 @@ Argumenty opcjonalne:
  * `-O, --optimizer-passes N`: zmienia maksymalną liczbę przebiegów pętli optymalizatora (domyślnie `2`).
  * `--optimizer-summary`: po zakończeniu optymalizacji wypisuje statystyki ile razy użyto którego rodzaju ulepszeń.
 
-### Użyte biblioteki
+## Użyte biblioteki
 W normalnym przypadku należałoby zainstalować ANTLR w systemie, a biblioteki pythonowe przy użyciu `pip` lub systemowego managera pakietów, jednak celem łatwej kompilacji na `students` załączyłem wszystko w podkatalogu `lib/`. Dodatkowo, w podkatalogu `utils/` załączam definicje kolorowania składni gramatyk ANTLR dla `vim`a.
 
  * `ANTLR 3.1.3` -- zestaw narzędzi do generacji parserów, wraz z zależnościami:
@@ -35,7 +35,7 @@ W normalnym przypadku należałoby zainstalować ANTLR w systemie, a biblioteki 
    * moduł `antlr` dla Pythona -- analogicznie jak w Javie, moduł `stringtemplate3` jest zależny od bibliotek starych wersji ANTLR;
  * biblioteki dostępne standardowo w Pythonie, np. [`argparse`](https://docs.python.org/2.7/library/argparse.html) do przetwarzania parametrów wiersza poleceń.
 
-### Opis modułów
+## Opis modułów
 Każdy plik źródłowy jest osobnym modułem programu, krótki opis każdego mniej więcej w kolejności działania:
 
  1. `FuturePrint.py`: funkcje pomocnicze do wypisywania komunikatów diagnostycznych, wiadomości, ostrzeżeń i błędów. Dodatkowo umożliwia wypisywanie sekwencji kolorów ANSI celem zwiększenia czytelności wyjścia programu.
@@ -53,7 +53,7 @@ Każdy plik źródłowy jest osobnym modułem programu, krótki opis każdego mn
  * `latte-runtime.c`: kilka funkcji w C składających się na biblioteczkę standardową języka Latte: `printInt`, `printString`, `readInt`, `readString`, `error`, oraz dodatkowej funkcji pomocniczej `concatString`. Operacje wejścia-wyjścia przeprowadzane są przy użyciu biblioteki `stdio.h`, liczby przechowywane są jako `int`, zaś napisy jako `char[]` (zwracane jako `char*`). Zakładamy też, że wszelka alokacja pamięci na stercie odbywa się po stronie tejże biblioteczki -- w przeciwnym razie trzeba by wywoływać odpowiedni `syscall` o powiększenie bloku pamięci, a następnie samemu nim zarządzać, co już raczej nie jest celem tego zadania :)
 
 
-### Optymalizacje
+## Optymalizacje
 Optymalizator w jednym przebiegu uruchamia kolejno opisane niżej metody. Liczba tych przebiegów ustalana jest parametrem wywołania kompilatora `-O` i domyślnie wynosi `2` (trzecia pętla rzadko coś wnosi).  W pojedynczym przebiegu głównym każda z metod może mieć kilka przebiegów z rzędu (co już jest kontrolowane parametrem w kodzie). Metody optymalizacyjne zwracają liczbę wykonanych poprawek, więc gdy dany przebieg (zarówno mały, jak i główny) nic nie wnosi, iteracja zostaje przerwana.
 
   1. `del_jumps_to_next`: usuwa instrukcje skoku (bezwarunkowe lub warunkowe wraz z porównaniem), które między sobą a docelową etykietą nie mają żadnej "właściwej" instrukcji (tzn. mogą mieć tam instrukcje puste, usunięte (wyoptymalizowane) lub inne etykiety). Uruchamiane "do skutku" (technicznie max. 100 przebiegów, ale zwykle wystarczają 2-3 w pierwszej pętli głównej i 0-1 w kolejnych).
@@ -70,17 +70,34 @@ Optymalizator w jednym przebiegu uruchamia kolejno opisane niżej metody. Liczba
   6.  zliczanie referencji do i zwalnianie pamięci -- w planach
   7.  `scan_labels`: to nie dokońca optymalizacja, a procedura pomocnicza dla innych optymalizacji -- buduje graf przepływu przez zindeksowanie pozycji etykiet oraz skoków w kodzie pośrednim.
   8.  `clear_deleted_codes`: ostatnia "optymalizacja" uprzątająca kod pośredni -- usuwa instrukcje oznaczone jako wyoptymalizowane lub puste (dodające komentarzy w kodzie wynikowym dla ułatwienia rozwoju aplikacji). Nie jest efektywne robić to na bieżąco, gdyż usuwanie ze środka listy ma złożoność liniową i wymusza ręczne wznawianie iteracji.
+  9.  Usuwanie martwego kodu: funkcje, które nie są wywoływane nie są w ogóle umieszczane w kodzie pośrednim. Klasy, które nigdy nie są alokowane również są usuwane (z poszanowaniem dziedziczenia), zaś wewnątrz używanych klas analogicznie umieszczane są tylko metody przynajmniej raz wywołane.
 
-### Rozszerzenia
+## Rozszerzenia
 
 #### Tablice
-Tablice `N`-elementowe alokowane są na stercie jako blok pamięci o rozmiarze `N+1` zmiennych. W pierwszej komórce pamięci wpisany jest rozmiar tablicy, zwracany w czasie stałym jako atrybut `.length`; zaś w dalszych komórkach kolejne wartości -- zmienne typów prostych lub referencje do typów złożonych. Możliwe jest oczywiście tworzenie tablic obiektów, tablic wielowymiarowych oraz tablic o niestałej długości. Operator `[]` i atrybut `.length` mogą być stosowane również bezpośrednio do wyrażeń zwracających typ tablicowy, w tym wyników obiektów tymczasowych jak wynik funkcji czy operatora `new`. Przy alokacji nowej tablicy jej elementy są ustawione na wartość domyślną danego typu -- `0` dla liczb, `false` dla wartości logicznych, `""` dla napisów oraz `null` dla referencji obiektów i innych tablic.
+Tablice `N`-elementowe alokowane są na stercie jako blok pamięci o rozmiarze `N+1` zmiennych, przy pomocy funkcji biblioteczki standardowej korzystajcej z tradycyjnego `malloc`. W pierwszej komórce pamięci wpisany jest rozmiar tablicy, zwracany w czasie stałym jako atrybut `.length`; zaś w dalszych komórkach kolejne wartości -- zmienne typów prostych lub referencje do typów złożonych. Możliwe jest oczywiście tworzenie tablic obiektów, tablic wielowymiarowych oraz tablic o niestałej długości. Operator `[]` i atrybut `.length` mogą być stosowane również bezpośrednio do wyrażeń zwracających typ tablicowy, w tym wyników obiektów tymczasowych jak wynik funkcji czy operatora `new`. Przy alokacji nowej tablicy jej elementy są ustawione na wartość domyślną danego typu -- `0` dla liczb, `false` dla wartości logicznych, `""` dla napisów oraz `null` dla referencji obiektów i innych tablic. Dostępna jest też pętla `for (TYPE x : array_expr) {...}`, pozwalająca wygodnie iterować po tablicy nie zmieniając jej. Technicznie ta pętla jest tylko lukrem syntaktycznym, po sprawdzeniu typów zostaje zamieniona na ekwiwalent
+```c++
+{ int _i = 0; TYPE[] _t = array_expr;
+  while (_i < _t.length) {
+    TYPE x = _t[_i]; _i++;
+    {...}}}
+```
 
 #### Struktury
-Struktury o `N` polach alokowane są jako blok pamięci o `N` zmiennych -- rozmiar struktury jest stały, więc nie ma potrzeby przechowywania jego rozmiaru w pamięci jak przy tablicach. Przy wyliczaniu wyrażenia które jest atrybutem struktury obliczane jest przesunięcie danego pola względem adresu początku struktury. Struktury, tak jak i tablice, można porównywać z innymi obiektami jak i wartością `null` (o ile są właściwego typu) operatorami `==` i `!=` -- jest to porównanie równości wskaźników.
+Struktury o `N` polach alokowane są jako blok pamięci o `N` zmiennych -- rozmiar struktury jest stały, więc nie ma potrzeby przechowywania jego rozmiaru w pamięci jak przy tablicach. Przy wyliczaniu wyrażenia które jest polem struktury, obliczane jest przesunięcie danego pola względem adresu jej początku. Pola oczywiście mogą być dowolnych typów, w tym tablic i innych struktur. Struktury, tak jak i tablice, można porównywać z innymi obiektami jak i wartością `null` operatorami `==` i `!=` -- jest to porównanie adresów struktur, o ile obia wyrażenia sa tego samego typu (w szczególności, zgodnie z treścią i testami zadania, `(TYPE) null` jest jedynym dozwolonym rodzajem rzutowania typów).
 
 #### Inicjacja pól obiektów
 Mimo że specyfikacja zadania tego nie wymaga, z braku dostępności konstruktorów postanowiłem dla ułatwienia wprowadzić inicjalizatory domyślnych wartości dla pól obiektów. Wzorując się na `C++11`, przy deklaracji pola można dopisać podstawienie dowolnym wyrażeniem które korzysta z już dostępnych wartości -- w tym funkcji globalnych nie korzystających z danej klasy oraz zainicjowanych wcześniej pól (w tym pól podklasy). Jeśli wyrażenie nie jest podane, podstawiana jest domyślna wartość dla danego typu, jak w tablicach. Pola inicjowane są w kolejności deklaracji.
+
+#### Obiekty
+Rozszerzenie struktur o metody. Dla ułatwienia sprawdzenia typów pola struktur są zwykłymi zmiennymi, a metody zwykłymi funkcjami w zasięgu ich klasy. Przed generacją kodu pośredniego metody zamieniane są na funkcje globalne o odpowiednio udekorowanej nazwie (np. `Counter::setValue()` zmieni się w `__Counter__setValue`); a na początku listy argumentów dodany jest parametr `self`, przekazujący referencję na właściwą instancję obiektu -- jest on niejawny i automatycznie przekazywany, jednak można też go użyć bezpośrednio. Następnie wszystkie odwołania do pól i innych metod zamieniane są na atrybut referencji `self`.
+
+#### Proste dziedziczenie
+Każda klasa może w tym rozszerzeniu dziedziczyć po jednej innej klasie, uzyskując dostęp do jej pól i metod. Klasa jest alokowana jako blok pamięci o rozmiarze sumy liczby nowych pól deklarowanych przez tę klasę oraz całkowitej liczby pól deklarowanych przez podklasy. W tymże bloku pamięci najpierw zapisane są kolejno pola podklas, poczynając od najwyższej (tej która niczego nie dziedziczy), a na samym końcu pola własne. W ten sposób znacząco ułatwiony jest dostęp do pól obiektów -- do metody podklasy jako parametr `self` można przekazać po prostu referencję do nadklasy, gdyż początkowy fragment jej bloku pamięci jest poprawnym obiektem podklasy (czyli przesunięcie pola podklasy względem adresu początku obiektu jest takie samo jakby używać tego pola bezpośrednio w podklasie).
+
+#### Wyjście programu
+Postarałem się, żeby wyjście kompilatora było maksymalnie wygodne w odbiorze, przez zaznaczanie ważnych fragmentów kolorami, podawanie gdzie możliwe powiązanej pozycji w kodzie programu i innych dodatkowych informacji oraz dodatkowe parametry wywołania. Wzorowałem się często na `gcc`, np. błędowi ponownej deklaracji zmiennej (z podanym miejscem i typem) towarzyszy notatka wskazująca miejsce i typ poprzedniej deklaracji, analogicznie przy wszelkich innych błędach typów. Dostępne są różne inne pomocnicze błędy i ostrzeżenia, np. dokładne sprawdzanie zwracania wartości z funkcji (ze wskazaniem fragmentów które nigdy nie zostaną osiągnięte), wskazywanie cyklicznego dziedziczenia, sprawdzanie rozmiaru stałych liczbowych czy nieużytych wyników wyrażeń. Dodatkowo, przy włączeniu trybu gadatliwego (`-d`), widać cały proces budowania kodu i optymalizacji, a w kodzie wynikowym `.s` są pozostawione znaczniki i komentarze pomagające w czytelności.
+
 
 ### Użyta dokumentacja
  * [dokumentacja i samouczki ANTLR3](https://theantlrguy.atlassian.net/wiki/display/ANTLR3/ANTLR+v3+documentation);
