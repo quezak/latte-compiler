@@ -64,7 +64,7 @@ class LatteTree(object):
         """ Add a symbol in the current context. """
         name = symbol.name
         # not self.has_symbol(name) -- we search for conflicts only on the current level
-        if name in self.symbols:
+        if name in self.symbols and self.symbol(name).type != LP.TYPE_ERROR:
             Status.add_error(TypecheckError('conflicting declaration of `%s` as `%s`' % (
                 name, str(symbol)), symbol.pos))
             if self.symbol(name).pos:
@@ -307,6 +307,10 @@ class ClassTree(LatteTree):
         """ For typechecking, let all members appear static with the class as their scope. """
         return self
 
+    def get_cur_fun(self):
+        """ For typechecking, so TYPE_ERROR dummy symbols are put in the class. """
+        return self
+
     def _check_member(self, name, pos):
         if name not in self.symbols:  # search *only* in the current class!
             Status.add_error(TypecheckError(
@@ -474,7 +478,7 @@ class ForTree(BlockTree):
     """ Node representing a foreach loop -- deriving from Block to have its own scope.
     
     This node is used only for construction, and then transforms itself into an equivalent while
-    loop, e.g. `for (int i : t)` stmt becomes: `{ int _c; while (_c < t.length) { stmt; _c++; } }`
+
     """
     def __init__(self, **kwargs):
         super(BlockTree, self).__init__(LP.FOR, **kwargs)  # super-super intentional
@@ -543,25 +547,24 @@ class DeclTree(StmtTree):
 
     def add_item(self, item):
         self.items.append(item)
-        if not item.expr:
-            for case in switch(self.decl_type.type):
-                if case(LP.INT):
-                    item.expr = LiteralTree(LP.INT, 0)
-                    break
-                if case(LP.BOOLEAN):
-                    item.expr = LiteralTree(LP.BOOLEAN, 'false')
-                    break
-                if case(LP.STRING):
-                    item.expr = LiteralTree(LP.STRING, '""')
-                    break
-                if case(LP.VOID):
-                    return  # just to avoid errors
-                if case(LP.ARRAY, LP.OBJECT):
-                    item.expr = LiteralTree(self.decl_type.type, LP.NULL)
-                    break
-                if case():
-                    raise InternalError('no default value for type %s' % str(self.decl_type))
-        self.add_child(item.expr)
+        if self.decl_type.type != LP.VOID:
+            if not item.expr:
+                item.expr = self.default_type_value(self.decl_type.type)
+            self.add_child(item.expr)
+
+    @staticmethod
+    def default_type_value(type):
+        for case in switch(type):
+            if case(LP.INT):
+                return LiteralTree(LP.INT, 0)
+            if case(LP.BOOLEAN):
+                return LiteralTree(LP.BOOLEAN, 'false')
+            if case(LP.STRING):
+                return LiteralTree(LP.STRING, '""')
+            if case(LP.ARRAY, LP.OBJECT):
+                return LiteralTree(type, LP.NULL)
+            if case():
+                raise InternalError('no default value for type %s' % str(type))
 
     def print_tree(self):
         self._print_indented('>DECL %s' % str(self.decl_type))

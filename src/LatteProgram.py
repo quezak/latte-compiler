@@ -12,7 +12,7 @@ from LatteParser import Builtins
 from FuturePrint import debug
 from LatteUtils import Symbol
 from LatteErrors import InternalError
-from LatteNodes import ExprTree, BinopTree
+from LatteNodes import ExprTree, BinopTree, LiteralTree
 from Utils import switch, Flags
 
 
@@ -311,15 +311,16 @@ class ExprCode(StmtCode):
 class LiteralCode(ExprCode):
     def __init__(self, tree, **kwargs):
         super(LiteralCode, self).__init__(tree, **kwargs)
-        self.value = tree.value
         for case in switch(self.type.type):
             if case(LP.BOOLEAN):
                 # We already checked that a boolean is a boolean, now we use numbers.
-                if self.value == 'true':
-                    self.value = 1
-                else:
-                    self.value = 0
+                self.value = 1 if tree.value == 'true' else 0
                 break
+            if case(LP.OBJECT, LP.ARRAY):
+                self.value = 0  # The only case of an object literal is NULL.
+                break
+            if case():
+                self.value = tree.value
 
     def gen_code(self, **kwargs):
         if self.has_jump_codes(kwargs):
@@ -341,14 +342,11 @@ class LiteralCode(ExprCode):
 
     def _gen_code_as_value(self, **kwargs):
         for case in switch(self.type.type):
-            if case(LP.BOOLEAN, LP.INT):
+            if case(LP.BOOLEAN, LP.INT, LP.OBJECT):
                 self.add_instr(CC.PUSH, src=Loc.const(self.value))
                 break
             if case(LP.STRING):
                 self.add_instr(CC.PUSH, src=Loc.stringlit(self))
-                break
-            if case(LP.OBJECT):  # The only case of an object literal is NULL.
-                self.add_instr(CC.PUSH, src=Loc.const(0))
                 break
             if case():
                 raise InternalError('invalid literal type %s' % str(self.type.type))
@@ -369,8 +367,12 @@ class VarCode(LiteralCode):
         # [0]: load the bool value into a register.
         for case in switch(self.type.type):
             if case(LP.IDENT) and self.tree.symbol(self.value).type == LP.BOOLEAN:
-                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
-                               dest=Loc.reg('a'))
+                # A variable referenced while instantiating is surely a class member.
+                if NewCode.instantiating_class:
+                    NewCode.new_member_val(self, self.value, Loc.reg('a'))
+                else:
+                    self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
+                                   dest=Loc.reg('a'))
                 break
             if case(LP.ELEM) and self.tree.value_type.type == LP.BOOLEAN:
                 self._gen_code_load_array_elem(dest_reg=Loc.reg('a'))
@@ -391,7 +393,12 @@ class VarCode(LiteralCode):
             if case(LP.IDENT):
                 if addr_only:
                     return
-                self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)), dest=Loc.reg('a'))
+                # A variable referenced while instantiating is surely a class member.
+                if NewCode.instantiating_class:
+                    NewCode.new_member_val(self, self.value, Loc.reg('a'))
+                else:
+                    self.add_instr(CC.MOV, src=Loc.sym(self.tree.symbol(self.value)),
+                                   dest=Loc.reg('a'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case(LP.ATTR):
@@ -669,6 +676,11 @@ class FuncallCode(ExprCode):
 
 # new object construction #######################################################################
 class NewCode(ExprCode):
+    
+    # This static field will be set to (ClassTree, Loc(obj address)) while instantiating an object,
+    # so member initializations can reference previous members, like in C++11.
+    instantiating_class = None
+
     def __init__(self, tree, **kwargs):
         super(NewCode, self).__init__(tree, **kwargs)
         for child in tree.children:
@@ -688,9 +700,12 @@ class NewCode(ExprCode):
                 self.add_instr(CC.LEA, src=Loc.mem('', offset=CC.var_size,
                                                    idx=Loc.reg_a, mult=CC.var_size),
                                dest=Loc.reg('a'), drop_reg1=Loc.reg('a'))  # calc memory size
+                init_value = self.default_asm_value(self.value_type.type.subtype)
+                debug('init value for %s:' % self.value_type, str(init_value))
+                self.add_instr(CC.PUSH, src=init_value)
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
-                self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'))
+                self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
                 # Write the array size into the first index.
                 self.add_instr(CC.POP, dest=Loc.reg('d'))  # load the array size saved earlier
                 self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
@@ -700,15 +715,58 @@ class NewCode(ExprCode):
             if case(LP.OBJECT):
                 # Allocate required space.
                 cls = self.tree.get_class(self.classname)
+                self.add_instr(CC.PUSH, src=Loc.const(0))  # Fill the memory with 0.
                 self.add_instr(CC.PUSH, src=Loc.const(cls.var_count * CC.var_size))
                 self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
-                self.add_instr(CC.ADD, lhs=Loc.const(CC.var_size), rhs=Loc.reg('top'))
-                # Push the memory pointer as expression result.
+                self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
+                # Save %ebx to store the class base pointer there.
+                self.add_instr(CC.PUSH, src=Loc.reg('b'))
+                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.reg('b'))
+                # Assign the non-0 default values and specified initializations.
+                old_instantiating_class = NewCode.instantiating_class
+                NewCode.instantiating_class = (cls, Loc.reg('b'))
+                for decl in cls.children:
+                    dtype = decl.decl_type.type
+                    for item in decl.items:
+                        expr_code = ExprFactory(item.expr)
+                        if expr_code.is_constant() and expr_code.value == 0:
+                            continue  # Skip assignments with 0, as the memory is zero-filled.
+                        self.add_child_code(expr_code)  # Evaluate the assigned value.
+                        self.add_instr(CC.POP, dest=Loc.reg('d'))
+                        # Compute member address -- object base pointer is still in %ebx.
+                        m_offset = cls.members[item.name] * CC.var_size
+                        self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
+                        self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
+                        self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
+                NewCode.instantiating_class = old_instantiating_class
+                # Restore %ebx and push the object memory pointer as expression result.
+                self.add_instr(CC.MOV, src=Loc.reg('b'), dest=Loc.reg('a'))
+                self.add_instr(CC.POP, dest=Loc.reg('b'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case():
                 raise InternalError('invalid type for new operator: ' + str(self.value_type))
         self.check_unused_result()
+
+    @staticmethod
+    def default_asm_value(type):
+        """ Return Loc of a value that should be assigned to allocated but unset objects. """
+        for case in switch(type):
+            if case(LP.INT, LP.BOOLEAN, LP.ARRAY, LP.OBJECT):
+                return Loc.const(0)  # False=0 for boolean, NULL=0 for array and object.
+            if case(LP.STRING):
+                return Loc.stringlit(LiteralTree(LP.STRING, '""'))  # Pointer to "" constant.
+            if case():
+                raise InternalError('no default asm value for type %s' % str(type))
+
+    @classmethod
+    def new_member_val(cls, node, name, dest_reg):
+        """ Extract value of an already initialized member while initializing some other member. """
+        cls, obj_ptr = cls.instantiating_class
+        m_offset = cls.members[name] * CC.var_size
+        node.add_instr(CC.MOV, src=Loc.const(m_offset), dest=dest_reg)
+        node.add_instr(CC.ADD, lhs=obj_ptr, rhs=dest_reg)
+        node.add_instr(CC.MOV, src=Loc.mem(str(dest_reg)), dest=dest_reg)
 
 
 # factories #####################################################################################

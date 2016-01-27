@@ -63,11 +63,15 @@ char* concatString(const char* a, const char* b) {
     return dest;
 }
 
-void* getMemory(size_t size) {
+void* getMemory(size_t size, int init_value) {
     void *res = malloc(size);
     if (!res) {
         (void) printf("FATAL ERROR: can't allocate memory for object");
         exit(ENOMEM);
+    }
+    int i;
+    for (i = 0; i < size / sizeof(int); ++i) {
+        ((int*)res)[i] = init_value;
     }
     return res;
 }

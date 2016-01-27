@@ -235,6 +235,7 @@ class Loc(object):
     reg_a = '%eax'
     reg_d = '%edx'
     reg_c = '%ecx'
+    reg_b = '%ebx'  # keep in mind this is callee-saved.
 
     # Note: cdecl needs EBP, ESI, EDI, EBX preserved.
     top = '%esp'
