@@ -493,6 +493,10 @@ class ClassTree(LatteTree):
 
     def morph_methods(self):
         """ Transform member functions into proper methods. """
+        for sym in self.symbols.values():
+            if sym.is_function() and sym.call_counter == 0:
+                Status.add_warning(TypecheckError(
+                    'method `%s` defined but never called' % sym.full_name(), sym.pos))
         for method in self.fundefs():
             method.morph_to_method(self)
 
