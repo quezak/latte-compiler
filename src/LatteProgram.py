@@ -76,14 +76,22 @@ class LatteCode(object):
 class ProgCode(LatteCode):
     def __init__(self, tree, **kwargs):
         super(ProgCode, self).__init__(tree, **kwargs)
-        for child in tree.fundefs():
-            if child.symbol(child.name).call_counter > 0 or child.name == LP.Builtins.MAIN:
-                self.add_fun_code(child)
+        for cls in tree.classdefs():
+            if cls.new_count > 0:
+                self.add_class_code(cls)
             else:
-                debug('skipping uncalled function `%s`' % child.name)
+                debug('skipping uninstantiated class `%s`' % cls.name)
+        for fun in tree.fundefs():
+            if tree.symbol(fun.name).call_counter > 0 or fun.name == LP.Builtins.MAIN:
+                self.add_fun_code(fun)
+            else:
+                debug('skipping uncalled function `%s`' % fun.name)
 
     def add_fun_code(self, funtree):
         self.add_child(FunCode(funtree))
+
+    def add_class_code(self, clstree):
+        self.add_child(ClassCode(clstree))
 
     def gen_code(self, **kwargs):
         # source file info
@@ -93,7 +101,6 @@ class ProgCode(LatteCode):
         # program code
         self.add_asm_instr(['.text'])
         for child in self.children:
-            self.add_instr(CC.EMPTY)
             self.add_child_code(child)
         # string constants (after children, so their labels are allocated)
         self.add_instr(CC.EMPTY)
@@ -127,10 +134,34 @@ class FunCode(LatteCode):
         return self.used_vars - 1
 
     def gen_code(self, **kwargs):
+        self.add_instr(CC.EMPTY)
         self.add_instr(CC.FUNC, label=self.name, tree=self)
         self.add_child_by_idx(0)
         self.add_instr(CC.LABEL, label=self.ret_label)
         self.add_instr(CC.ENDFUNC, label=self.name, tree=self)
+
+
+# class #########################################################################################
+class ClassCode(LatteCode):
+    def __init__(self, tree, **kwargs):
+        super(ClassCode, self).__init__(tree, **kwargs)
+        self.name = tree.name
+        for fun in tree.fundefs():
+            if tree.symbol(fun.old_name).call_counter > 0 or True:  # TODO remove True
+                self.add_fun_code(fun)
+            else:
+                debug('skipping uncalled method `%s`' % fun.fun_symbol.full_name())
+
+    def add_fun_code(self, funtree):
+        funcode = FunCode(funtree)
+        self.add_child(funcode)
+
+    def gen_code(self, **kwargs):
+        self.add_instr(CC.EMPTY)
+        self.add_instr(CC.SCOPE, tree=self, comment=' -- class %s --' % self.name)
+        for funcode in self.children:
+            self.add_child_code(funcode)
+        self.add_instr(CC.ENDSCOPE, tree=self, comment=' -- class %s --' % self.name)
 
 
 # statement #####################################################################################

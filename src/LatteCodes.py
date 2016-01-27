@@ -192,13 +192,13 @@ class Codes(object):
                 return
             if case(cls.SCOPE):
                 if Flags.debug:
-                    yield '# ' + (' ' * cls._scope_depth * 2) + '{'
+                    yield '# ' + (' ' * cls._scope_depth * 2) + '{' + code.get('comment', '')
                     cls._scope_depth += 1
                 return
             if case(cls.ENDSCOPE):
                 if Flags.debug:
                     cls._scope_depth -= 1
-                    yield '# ' + (' ' * cls._scope_depth * 2) + '}'
+                    yield '# ' + (' ' * cls._scope_depth * 2) + '}' + code.get('comment', '')
                 return
             if case(cls.CHILD):
                 raise InternalError('code type %s not allowed here', cls._code_name(code['type']))

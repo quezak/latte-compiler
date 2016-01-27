@@ -10,7 +10,7 @@ from itertools import ifilter
 import LatteParser as LP
 from FuturePrint import debug
 from LatteParser import Builtins
-from LatteUtils import Symbol, FunSymbol, DataType, DeclArg
+from LatteUtils import Symbol, FunSymbol, DataType, DeclArg, FunArg
 from LatteErrors import Status, TypecheckError, InternalError
 from Utils import switch
 
@@ -233,7 +233,7 @@ class ProgTree(LatteTree):
         for child in self.children:
             child._clear_symbols()
 
-    def classes(self):
+    def classdefs(self):
         """ Generator for iterating through member declarations. """
         for cls in ifilter(lambda n: not n.is_function(), self.children):
             yield cls
@@ -299,6 +299,33 @@ class FunTree(LatteTree):
 
     def is_function(self):
         return True
+
+    def morph_to_method(self, cls):
+        """ Transform a method to a global function: change name, add `self` parameter, change
+        member IDENTs to ATTRs of `self`. """
+        self.cls = cls
+        self.old_name = self.name
+        self.name = self.mangled_name
+        self.add_arg(FunArg(DataType.mkobject(cls.name), Builtins.SELF))
+        # Move `self` to first position in argument list.
+        self.args.insert(0, self.args.pop())
+        self._member_idents_to_attrs(self.children[0])
+
+    def _member_idents_to_attrs(self, tree):
+        """ Recursively changes all class member IDENTs to ATTRs of `self` in tree's children. """
+        for pos in xrange(len(tree.children)):
+            node = tree.children[pos]
+            if node.type.type == LP.IDENT and node.symbol(node.value).classname == self.cls.name:
+                self_var = VarTree(LP.IDENT, Builtins.SELF)
+                attr = VarTree(LP.ATTR, node.value, children=[self_var], pos=node.pos)
+                attr.set_parent(tree)
+                attr.check_types()  # to set type attributes
+                debug('changing %s to self.%s at %s' % (node.value, attr.value, node.pos))
+                debug('   type is %s, obj_type is %s' % (str(attr.value_type), str(attr.obj_type)))
+                tree.children[pos] = attr
+                continue
+            if len(node.children):
+                self._member_idents_to_attrs(node)
 
 
 # class #########################################################################################
@@ -376,6 +403,15 @@ class ClassTree(LatteTree):
 
     def is_class(self):
         return True
+
+    def _clear_symbols(self):
+        """ Clears symbol tables except for the method declarations. """
+        # But transform member functions into proper methods while still having symbols.
+        for method in self.fundefs():
+            method.morph_to_method(self)
+        self.symbols = { name: sym for name, sym in self.symbols.items() if sym.is_function() }
+        for child in self.children:
+            child._clear_symbols()
 
 
 # statement #####################################################################################
