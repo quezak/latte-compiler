@@ -719,29 +719,30 @@ class NewCode(ExprCode):
                 self.add_instr(CC.PUSH, src=Loc.const(cls.var_count * CC.var_size))
                 self.add_instr(CC.CALL, label=Builtins.MALLOC_FUNCTION)
                 self.add_instr(CC.ADD, lhs=Loc.const(2 * CC.var_size), rhs=Loc.reg('top'))
-                # Save %ebx to store the class base pointer there.
-                self.add_instr(CC.PUSH, src=Loc.reg('b'))
-                self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.reg('b'))
-                # Assign the non-0 default values and specified initializations.
-                old_instantiating_class = NewCode.instantiating_class
-                NewCode.instantiating_class = (cls, Loc.reg('b'))
-                for decl in cls.children:
-                    dtype = decl.decl_type.type
-                    for item in decl.items:
-                        expr_code = ExprFactory(item.expr)
-                        if expr_code.is_constant() and expr_code.value == 0:
-                            continue  # Skip assignments with 0, as the memory is zero-filled.
-                        self.add_child_code(expr_code)  # Evaluate the assigned value.
-                        self.add_instr(CC.POP, dest=Loc.reg('d'))
-                        # Compute member address -- object base pointer is still in %ebx.
-                        m_offset = cls.members[item.name] * CC.var_size
-                        self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
-                        self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
-                        self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
-                NewCode.instantiating_class = old_instantiating_class
-                # Restore %ebx and push the object memory pointer as expression result.
-                self.add_instr(CC.MOV, src=Loc.reg('b'), dest=Loc.reg('a'))
-                self.add_instr(CC.POP, dest=Loc.reg('b'))
+                if cls.has_nonzero_initializers():
+                    # Save %ebx to store the class base pointer there.
+                    self.add_instr(CC.PUSH, src=Loc.reg('b'))
+                    self.add_instr(CC.MOV, src=Loc.reg('a'), dest=Loc.reg('b'))
+                    # Assign the non-0 default values and specified initializations.
+                    old_instantiating_class = NewCode.instantiating_class
+                    NewCode.instantiating_class = (cls, Loc.reg('b'))
+                    for decl in cls.children:
+                        dtype = decl.decl_type.type
+                        for item in decl.items:
+                            expr_code = ExprFactory(item.expr)
+                            if expr_code.is_constant() and expr_code.value == 0:
+                                continue  # Skip assignments with 0, as the memory is zero-filled.
+                            self.add_child_code(expr_code)  # Evaluate the assigned value.
+                            self.add_instr(CC.POP, dest=Loc.reg('d'))
+                            # Compute member address -- object base pointer is still in %ebx.
+                            m_offset = cls.members[item.name] * CC.var_size
+                            self.add_instr(CC.MOV, src=Loc.const(m_offset), dest=Loc.reg('a'))
+                            self.add_instr(CC.ADD, lhs=Loc.reg('b'), rhs=Loc.reg('a'))
+                            self.add_instr(CC.MOV, src=Loc.reg('d'), dest=Loc.mem(Loc.reg_a))
+                    NewCode.instantiating_class = old_instantiating_class
+                    # Restore %ebx and push the object memory pointer as expression result.
+                    self.add_instr(CC.MOV, src=Loc.reg('b'), dest=Loc.reg('a'))
+                    self.add_instr(CC.POP, dest=Loc.reg('b'))
                 self.add_instr(CC.PUSH, src=Loc.reg('a'))
                 break
             if case():

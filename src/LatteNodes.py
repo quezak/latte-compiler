@@ -321,6 +321,17 @@ class ClassTree(LatteTree):
             self.add_symbol(Symbol(name, LP.TYPE_ERROR, pos))
         return self.symbols[name]
 
+    def has_nonzero_initializers(self):
+        for decl in self.children:
+            for item in decl.items:
+                if (not isinstance(item.expr, LiteralTree) or
+                        (item.expr.type.type == LP.INT and item.expr.value != 0) or
+                        (item.expr.type.type == LP.BOOLEAN and item.expr.value != 'false') or
+                        (item.expr.type.type == LP.OBJECT and item.expr.value != LP.NULL) or
+                        (item.expr.type.type == LP.STRING)):
+                    return True
+        return False
+
 
 # statement #####################################################################################
 class StmtTree(LatteTree):
