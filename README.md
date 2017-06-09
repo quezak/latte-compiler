@@ -1,6 +1,8 @@
-Projekt zaliczeniowy z MRJP, 01.2016
+# About this repository
 
-Artur Kozak [320770], `artur.kozak@students.mimuw.edu.pl`
+This is a compiler for a Java-like programming language, done with Python and ANTLR3. It outputs x86 assembly and links it with gcc. It was a final assignment on a course about compilers.
+
+The language has all the basic datatypes and flow control instructions, strings, structs, and classes with simple (non-virtual) inheritance. Below is the original, detailed report in Polish, describing how it should be used, how all the modules work, what language features and output code optimizations are implemented and how.
 
 # latte-compiler
 
